@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import QRCode from 'qrcode';
+import { spawn, ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -72,6 +73,7 @@ export class ChronoBotEngine {
   private employees: ChronoEmployee[] = [];
   private allowedNumbers: Record<string, string> = {};
   private savedImages: ChronoSavedImage[] = [];
+  private botProcess: ChildProcess | null = null;
 
   // WhatsApp Web QR Pairing State
   private currentRawQr = '';
@@ -234,13 +236,9 @@ export class ChronoBotEngine {
   private initChronoLogs() {
     this.logs = [];
     this.events = [];
-    this.addLogInternal('INFO', 'Estado del bot: APAGADO / Socket inactivo.');
-    this.addLogInternal('INFO', 'Inicie el bot y escanea el código QR para conectar WhatsApp.');
+    this.addLogInternal('INFO', 'Estado del bot: APAGADO / Proceso de Node inactivo.');
+    this.addLogInternal('INFO', 'Inicie el bot desde el botón principal para arrancar el proceso de Node.');
     this.addLogInternal('INFO', `Contactos autorizados cargados desde ${path.basename(EMPLOYEES_FILE_PATH)}: ${Object.keys(this.allowedNumbers).length}`);
-    if (this.currentQrDataUrl) {
-      this.addLogInternal('INFO', 'Código QR disponible para vinculación:');
-      this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
-    }
   }
 
   private addLogInternal(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', message: string, timeStr?: string, options?: { isQr?: boolean; highlightPath?: string; highlightSender?: string; details?: unknown }) {
@@ -276,6 +274,104 @@ export class ChronoBotEngine {
     };
     const mapped = levelMap[level] || 'INFO';
     this.addLogInternal(mapped, message, undefined, { details });
+  }
+
+  public async startBotProcess() {
+    if (this.botProcess) {
+      this.addLogInternal('WARN', 'El proceso del bot ya se encuentra en ejecución.');
+      return;
+    }
+
+    this.status = 'active';
+    this.startTime = Date.now();
+    this.addLogInternal('INFO', 'Iniciando proceso real de Node: node chronobot.js');
+
+    try {
+      this.botProcess = spawn('node', [chronobotPath], {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      this.addLogInternal('INFO', `Proceso del bot de Node.js iniciado con PID: ${this.botProcess.pid}`);
+
+      this.events.unshift({
+        id: 'ev-' + Date.now(),
+        type: 'client_connected',
+        title: 'Proceso de Node iniciado',
+        subtitle: `PID: ${this.botProcess.pid}`,
+        relativeTime: 'Ahora mismo',
+        timestamp: Date.now()
+      });
+
+      if (this.botProcess.stdout) {
+        this.botProcess.stdout.on('data', (data: Buffer) => {
+          const text = data.toString('utf-8').trim();
+          if (text) {
+            text.split('\n').forEach(line => {
+              if (line.trim()) {
+                this.addLogInternal('INFO', `[Node Output] ${line.trim()}`);
+              }
+            });
+          }
+        });
+      }
+
+      if (this.botProcess.stderr) {
+        this.botProcess.stderr.on('data', (data: Buffer) => {
+          const text = data.toString('utf-8').trim();
+          if (text) {
+            text.split('\n').forEach(line => {
+              if (line.trim()) {
+                this.addLogInternal('WARN', `[Node Error] ${line.trim()}`);
+              }
+            });
+          }
+        });
+      }
+
+      this.botProcess.on('exit', (code, signal) => {
+        this.addLogInternal('WARN', `El proceso de Node del bot finalizó. Código: ${code}, Señal: ${signal}`);
+        this.botProcess = null;
+        this.status = 'stopped';
+      });
+
+      this.botProcess.on('error', (err) => {
+        this.addLogInternal('ERROR', `Error en el proceso de Node: ${err.message}`);
+        this.botProcess = null;
+        this.status = 'stopped';
+      });
+
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addLogInternal('ERROR', `Error al arrancar chronobot.js: ${msg}`);
+      this.botProcess = null;
+      this.status = 'stopped';
+    }
+  }
+
+  public async stopBotProcess() {
+    if (!this.botProcess) {
+      this.status = 'stopped';
+      this.addLogInternal('WARN', 'El proceso del bot no estaba en ejecución.');
+      return;
+    }
+
+    this.addLogInternal('INFO', `Deteniendo proceso de Node (PID: ${this.botProcess.pid})...`);
+    try {
+      this.botProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (this.botProcess) {
+          this.botProcess.kill('SIGKILL');
+        }
+      }, 2000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addLogInternal('ERROR', `Error deteniendo el proceso: ${msg}`);
+    } finally {
+      this.botProcess = null;
+      this.status = 'stopped';
+    }
   }
 
   public async handleMessage(payload: { from: string; body?: string; hasMedia?: boolean; type?: string; author?: string }) {
@@ -424,33 +520,12 @@ export class ChronoBotEngine {
   }
 
   public setStatus(newStatus: 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected') {
-    this.status = newStatus;
     if (newStatus === 'active') {
-      this.log('log', 'Cliente WhatsApp conectado y listo.');
-      this.events.unshift({
-        id: 'ev-' + Date.now(),
-        type: 'client_connected',
-        title: 'Cliente conectado',
-        subtitle: 'WhatsApp',
-        relativeTime: 'Ahora mismo',
-        timestamp: Date.now()
-      });
-    } else if (newStatus === 'stopped' || newStatus === 'disconnected' || newStatus === 'waiting_qr') {
-      this.connectedPhone = '';
-      this.log('warn', 'Estado del bot: APAGADO / Desconectado.');
-      void this.generateQrCode().then(() => {
-        this.addLogInternal('INFO', 'Escanea el código QR con WhatsApp para iniciar sesión:', undefined, { isQr: true });
-        this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
-      });
-    } else if (newStatus === 'restarting') {
-      this.connectedPhone = '';
-      this.startTime = Date.now();
-      this.log('log', 'Reiniciando ChronoBot...');
-      void this.generateQrCode();
-      setTimeout(() => {
-        this.status = 'waiting_qr';
-        this.log('log', 'Esperando escaneo de código QR para conectar...');
-      }, 1000);
+      void this.startBotProcess();
+    } else if (newStatus === 'stopped' || newStatus === 'disconnected') {
+      void this.stopBotProcess();
+    } else {
+      this.status = newStatus;
     }
   }
 
@@ -493,12 +568,10 @@ export class ChronoBotEngine {
   }
 
   public async disconnectWhatsApp() {
-    this.status = 'stopped';
+    await this.stopBotProcess();
     this.connectedPhone = '';
     await this.generateQrCode();
     this.addLogInternal('WARN', 'Sesión de WhatsApp desconectada. Bot en estado APAGADO.');
-    this.addLogInternal('INFO', 'Escanea el código QR con WhatsApp para conectar:');
-    this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
     return {
       status: this.status,
       qrData: this.getQrData()
@@ -533,7 +606,8 @@ export class ChronoBotEngine {
       authorizedCount: Object.keys(this.allowedNumbers).length,
       savedImagesCount: this.savedImages.length,
       allowedNumbers: this.allowedNumbers,
-      qrData: this.getQrData()
+      qrData: this.getQrData(),
+      pid: this.botProcess?.pid
     };
   }
 

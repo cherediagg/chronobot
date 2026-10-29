@@ -1,47 +1,55 @@
 <div class="relative min-h-screen text-slate-100 overflow-x-hidden p-6 sm:p-10 max-w-[1600px] mx-auto select-none font-sans">
 
-  <!-- Top Hero Bar: Organic Title & Telemetry Status -->
+  <!-- Top Hero Bar: Organic Title & Main Control Button -->
   <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-8">
     <div class="space-y-1.5">
       <div class="flex items-center gap-3">
         <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 text-[11px] font-semibold tracking-wide backdrop-blur-xl border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
           <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-          FERNET V2 · AURORA GLASS
+          FERNET V2 · CHRONOBOT
         </span>
         <span class="text-xs text-slate-400 font-mono tabular-nums">{{ botService.currentTimeFormatted() }}</span>
       </div>
 
       <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-400">
-        Panel de Control Inteligente
+        Panel de Control Principal
       </h1>
       <p class="text-sm text-slate-400 max-w-xl leading-relaxed">
-        Monitoreo biomecánico en tiempo real, ingestión multimedia instantánea y gestión fluida de WhatsApp.
+        Gestión y monitoreo del Bot de WhatsApp en Node.js.
       </p>
     </div>
 
-    <!-- Live Status Pod & QR Action -->
+    <!-- Main Control Button & Status Indicator -->
     <div class="flex items-center gap-3 shrink-0 flex-wrap">
-      <button
-        type="button"
-        (click)="botService.openQrModal()"
-        class="px-4 py-2 rounded-2xl border flex items-center gap-2 text-xs font-bold transition-all shadow-lg active:scale-95 cursor-pointer"
-        [class]="botService.status() === 'active' 
-          ? 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-slate-200' 
-          : 'bg-gradient-to-r from-emerald-500/25 to-teal-500/20 hover:from-emerald-500/35 hover:to-teal-500/30 border-emerald-500/40 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse'"
-      >
-        <mat-icon class="text-base">qr_code_scanner</mat-icon>
-        <span>{{ botService.status() === 'active' ? 'Código QR' : 'Escanear QR' }}</span>
-      </button>
+      @if (botService.status() === 'active') {
+        <button
+          type="button"
+          (click)="botService.stopBot()"
+          class="px-5 py-2.5 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold text-xs flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(244,63,94,0.3)] active:scale-95 cursor-pointer"
+        >
+          <mat-icon class="text-base">power_settings_new</mat-icon>
+          <span>Apagar Bot</span>
+        </button>
+      } @else {
+        <button
+          type="button"
+          (click)="botService.startBot()"
+          class="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 border border-emerald-500/40 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-95 cursor-pointer"
+        >
+          <mat-icon class="text-base">play_arrow</mat-icon>
+          <span>Iniciar Bot</span>
+        </button>
+      }
 
-      <div class="px-4 py-2 rounded-2xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 flex items-center gap-2.5 shadow-lg">
+      <div class="px-4 py-2.5 rounded-2xl bg-white/[0.04] backdrop-blur-2xl border border-white/10 flex items-center gap-2.5 shadow-lg">
         <span 
           class="w-2.5 h-2.5 rounded-full"
           [class]="botService.status() === 'active' ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse' : (botService.status() === 'connecting' ? 'bg-amber-400' : 'bg-rose-500')"
         ></span>
         <span class="text-xs font-semibold text-slate-200">
-          @if (botService.status() === 'active') { En línea · Conexión segura }
-          @else if (botService.status() === 'connecting') { Negociando socket... }
-          @else { Socket inactivo }
+          @if (botService.status() === 'active') { En línea }
+          @else if (botService.status() === 'connecting') { Conectando... }
+          @else { Bot Apagado }
         </span>
       </div>
     </div>
@@ -54,13 +62,13 @@
     </section>
   }
 
-  <!-- Fluid Telemetry Wave (Zero Box Borders) -->
-  <section class="mb-10" aria-label="Métricas fluidas del sistema">
+  <!-- Fluid Summary Metrics -->
+  <section class="mb-10" aria-label="Métricas del sistema">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-6 p-6 rounded-3xl bg-gradient-to-b from-white/[0.05] to-white/[0.01] backdrop-blur-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)] border border-white/5 relative overflow-hidden">
       <!-- Glow ambient overlay -->
       <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-cyan-500/5 to-transparent pointer-events-none"></div>
 
-      <!-- Item 1: Estado del Bot (Live Orb) -->
+      <!-- Item 1: Estado del Bot -->
       <div class="relative z-10 flex items-center gap-4">
         <div class="relative flex items-center justify-center shrink-0">
           <div 
@@ -133,254 +141,119 @@
           <h2 class="text-2xl font-black tracking-tight text-white font-mono tabular-nums">
             {{ botService.formattedUptime() }}
           </h2>
-          <span class="text-xs text-slate-400">Ciclo ininterrumpido</span>
+          <span class="text-xs text-slate-400">Ciclo activo</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Main Spatial Layout: Interactive Control Pod & Glass Terminal -->
-  <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mb-12">
-    <!-- LEFT: Aurora Projected Terminal Console (Span 8) -->
-    <div class="lg:col-span-8 space-y-6">
-      <div class="p-6 rounded-3xl bg-gradient-to-b from-white/[0.04] to-black/40 backdrop-blur-3xl shadow-[0_30px_70px_rgba(0,0,0,0.6)] border border-white/5 relative overflow-hidden">
-        <!-- Header of Terminal -->
-        <div class="flex items-center justify-between pb-4 border-b border-white/5">
-          <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-              <mat-icon class="text-base">terminal</mat-icon>
-            </div>
-            <div>
-              <h2 class="text-sm font-bold text-white tracking-tight">Stream de Eventos y Protocolo</h2>
-              <p class="text-[11px] text-slate-400 font-mono">Baileys Multi-Device Protocol · Transmisión en vivo</p>
-            </div>
+  <!-- Full-Width Terminal Console -->
+  <div class="mb-12">
+    <div class="p-6 rounded-3xl bg-gradient-to-b from-white/[0.04] to-black/40 backdrop-blur-3xl shadow-[0_30px_70px_rgba(0,0,0,0.6)] border border-white/5 relative overflow-hidden">
+      <!-- Header of Terminal -->
+      <div class="flex items-center justify-between pb-4 border-b border-white/5">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+            <mat-icon class="text-base">terminal</mat-icon>
           </div>
-
-          <!-- Controls: Auto-scroll & Clear -->
-          <div class="flex items-center gap-3">
-            <button
-              type="button"
-              (click)="botService.toggleAutoScroll()"
-              class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all"
-              [class]="botService.autoScroll() 
-                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' 
-                : 'bg-white/5 text-slate-400 border border-white/5'"
-            >
-              <span class="w-2 h-2 rounded-full" [class]="botService.autoScroll() ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'"></span>
-              <span>Auto-scroll</span>
-            </button>
-
-            <button
-              type="button"
-              (click)="botService.clearLogs()"
-              title="Limpiar registros"
-              class="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
-            >
-              <mat-icon class="text-base">delete_sweep</mat-icon>
-            </button>
+          <div>
+            <h2 class="text-sm font-bold text-white tracking-tight">Consola de Ejecución</h2>
+            <p class="text-[11px] text-slate-400 font-mono">Registro de actividad del Bot de Node.js</p>
           </div>
         </div>
 
-        <!-- Projected Phosphor Log Body -->
-        <div 
-          #terminalContainer
-          class="my-4 font-mono text-xs text-slate-300 leading-relaxed max-h-[380px] overflow-y-auto pr-2 select-text space-y-1.5 scroll-smooth"
-        >
-          @for (log of botService.logs(); track log.id) {
-            <div class="flex flex-wrap items-baseline gap-x-3 py-1 px-2.5 rounded-xl transition-colors hover:bg-white/[0.04]">
-              <span class="text-slate-500 shrink-0 tabular-nums text-[11px]">{{ log.time }}</span>
-              <span 
-                class="font-bold text-[11px] shrink-0 px-2 py-0.5 rounded-md"
-                [class]="log.level === 'INFO' ? 'bg-emerald-500/15 text-emerald-300' : (log.level === 'WARN' ? 'bg-amber-500/15 text-amber-300' : 'bg-rose-500/15 text-rose-300')"
-              >
-                {{ log.level }}
-              </span>
-
-              @if (log.isQr) {
-                <div class="w-full pl-6 my-2">
-                  <div class="text-[10px] leading-[1.15] font-mono whitespace-pre bg-black/70 p-4 rounded-2xl border border-emerald-500/20 inline-block text-emerald-300 shadow-[0_0_30px_rgba(16,185,129,0.15)]">
-██████████████  ▀▀  ▀█  ▀█  ▀█  ▀█  ██████████████
-██          ██  ▄▄  ▄▄  ▄▄  ▄▄  ▄▄  ██          ██
-██  ██████  ██  ▀▀  ▀█  ▀█  ▀█  ▀█  ██  ██████  ██
-██  ██████  ██  ▄▄  ▄▄  ▄▄  ▄▄  ▄▄  ██  ██████  ██
-██  ██████  ██  ▀▀  ▀█  ▀█  ▀█  ▀█  ██  ██████  ██
-██          ██  ▄▄  ▄▄  ▄▄  ▄▄  ▄▄  ██          ██
-██████████████  ██  ██  ██  ██  ██  ██████████████
-                ▀▀  ▀█  ▀█  ▀█  ▀█                
-██████████████  ▄▄  ▄▄  ▄▄  ▄▄  ▄▄  ██████████████
-                  </div>
-                </div>
-              } @else {
-                <span class="text-slate-200">
-                  @if (log.highlightPath) {
-                    Archivo procesado &rarr; <span class="text-teal-300 font-semibold underline">{{ log.highlightPath }}</span>
-                  } @else if (log.highlightSender) {
-                    Mensaje de: <span class="text-cyan-300 font-medium">{{ log.highlightSender }}</span>
-                  } @else {
-                    {{ log.text }}
-                  }
-                </span>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- Glass Interactive Command Dispatcher -->
-        <div class="pt-3 border-t border-white/5 flex items-center gap-3">
-          <div class="relative flex-1">
-            <input
-              type="text"
-              [formControl]="messageInput"
-              (keydown)="handleKeyDown($event)"
-              placeholder="Inyectar comando o mensaje simulado al bot..."
-              class="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all font-sans backdrop-blur-xl"
-            />
-          </div>
+        <!-- Controls: Auto-scroll & Clear -->
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            (click)="botService.toggleAutoScroll()"
+            class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+            [class]="botService.autoScroll()
+              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+              : 'bg-white/5 text-slate-400 border border-white/5'"
+          >
+            <span class="w-2 h-2 rounded-full" [class]="botService.autoScroll() ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'"></span>
+            <span>Auto-scroll</span>
+          </button>
 
           <button
             type="button"
-            (click)="handleSendMessage()"
-            title="Enviar"
-            class="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all active:scale-95 shrink-0"
+            (click)="botService.clearLogs()"
+            title="Limpiar registros"
+            class="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           >
-            <mat-icon class="text-base">send</mat-icon>
-            <span class="hidden sm:inline">Ejecutar</span>
+            <mat-icon class="text-base">delete_sweep</mat-icon>
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- RIGHT: Fluid Control Pod & Live Ambient Events (Span 4) -->
-    <div class="lg:col-span-4 space-y-6">
-      <!-- Sculpted Glass Control Deck -->
-      <div class="p-6 rounded-3xl bg-gradient-to-b from-white/[0.05] to-black/40 backdrop-blur-3xl shadow-[0_30px_70px_rgba(0,0,0,0.6)] border border-white/5 relative overflow-hidden">
-        <h2 class="text-sm font-bold text-white tracking-tight mb-4 flex items-center justify-between">
-          <span>Control del Motor</span>
-          <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-slate-400">Daemon</span>
-        </h2>
-
-        <div class="grid grid-cols-1 gap-3">
-          <!-- Iniciar -->
-          <button
-            type="button"
-            (click)="botService.startBot()"
-            [disabled]="botService.status() === 'active'"
-            class="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-bold text-xs flex items-center justify-center gap-3 transition-all shadow-[0_0_30px_rgba(16,185,129,0.3)] active:scale-95"
-          >
-            <mat-icon class="text-lg">play_arrow</mat-icon>
-            <span>Activar Conexión</span>
-          </button>
-
-          <!-- QR Code Pair & Disconnect buttons -->
-          <button
-            type="button"
-            (click)="botService.openQrModal()"
-            class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-teal-500/15 to-emerald-500/10 hover:from-emerald-500/30 hover:to-teal-500/20 border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2.5 transition-all shadow-sm active:scale-95 cursor-pointer"
-          >
-            <mat-icon class="text-base">qr_code_scanner</mat-icon>
-            <span>{{ botService.status() === 'active' ? 'Ver Código QR / Estado de Sesión' : 'Escanear Código QR' }}</span>
-          </button>
-
-          <!-- Detener & Reiniciar en doble botón fluido -->
-          <div class="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              (click)="botService.disconnectWhatsApp()"
-              [disabled]="botService.status() === 'stopped'"
-              class="py-3 px-4 rounded-2xl bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 border border-white/5 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 font-semibold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-              title="Desconecta la sesión y genera nuevo código QR"
+      <!-- Phosphor Log Body -->
+      <div
+        #terminalContainer
+        class="my-4 font-mono text-xs text-slate-300 leading-relaxed max-h-[380px] overflow-y-auto pr-2 select-text space-y-1.5 scroll-smooth"
+      >
+        @for (log of botService.logs(); track log.id) {
+          <div class="flex flex-wrap items-baseline gap-x-3 py-1 px-2.5 rounded-xl transition-colors hover:bg-white/[0.04]">
+            <span class="text-slate-500 shrink-0 tabular-nums text-[11px]">{{ log.time }}</span>
+            <span
+              class="font-bold text-[11px] shrink-0 px-2 py-0.5 rounded-md"
+              [class]="log.level === 'INFO' ? 'bg-emerald-500/15 text-emerald-300' : (log.level === 'WARN' ? 'bg-amber-500/15 text-amber-300' : 'bg-rose-500/15 text-rose-300')"
             >
-              <mat-icon class="text-base">link_off</mat-icon>
-              <span>Desconectar</span>
-            </button>
+              {{ log.level }}
+            </span>
 
-            <button
-              type="button"
-              (click)="botService.restartBot()"
-              class="py-3 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-            >
-              <mat-icon class="text-base">autorenew</mat-icon>
-              <span>Reiniciar</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live Ambient Events Ribbon -->
-      <div class="p-6 rounded-3xl bg-gradient-to-b from-white/[0.04] to-black/40 backdrop-blur-3xl shadow-[0_30px_70px_rgba(0,0,0,0.6)] border border-white/5">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-sm font-bold text-white tracking-tight">Actividad en Vivo</h2>
-          <span class="text-xs text-slate-400 font-mono">{{ botService.events().length }} eventos</span>
-        </div>
-
-        <div class="space-y-3.5">
-          @if (botService.events().length === 0) {
-            <div class="py-6 text-center text-slate-500 text-xs">
-              Sin actividad reciente. Los eventos aparecerán en tiempo real.
-            </div>
-          } @else {
-            @for (ev of botService.events(); track ev.id) {
-              <div class="flex items-center gap-3.5 p-2 rounded-2xl hover:bg-white/[0.03] transition-colors">
-                <span 
-                  class="w-3 h-3 rounded-full shrink-0 shadow-lg"
-                  [class]="ev.type === 'image_saved' ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]' : (ev.type === 'message_received' ? 'bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.8)]' : (ev.type === 'unauthorized' ? 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)]' : 'bg-teal-400 shadow-[0_0_12px_rgba(45,212,191,0.8)]'))"
-                ></span>
-
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center justify-between">
-                    <h3 class="text-xs font-semibold text-slate-100 truncate">{{ ev.title }}</h3>
-                    <span class="text-[10px] text-slate-400 font-mono">{{ ev.relativeTime }}</span>
-                  </div>
-                  <p class="text-[11px] text-slate-400 truncate">{{ ev.subtitle }}</p>
+            @if (log.isQr) {
+              <div class="w-full pl-6 my-2">
+                <div class="text-[11px] font-mono whitespace-pre bg-black/70 p-4 rounded-2xl border border-emerald-500/20 inline-block text-emerald-300 shadow-[0_0_30px_rgba(16,185,129,0.15)] font-bold">
+ ██████╗███████╗██████╗ ███╗   ██╗███████╗████████╗
+ ██╔════╝██╔════╝██╔══██╗████╗  ██║██╔════╝╚══██╔══╝
+ █████╗  █████╗  ██████╔╝██╔██╗ ██║█████╗     ██║
+ ██╔══╝  ██╔══╝  ██╔══██╗██║╚██╗██║██╔══╝     ██║
+ ██║     ███████╗██║  ██║██║ ╚████║███████╗   ██║
+ ╚═╝     ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝
                 </div>
               </div>
+            } @else {
+              <span class="text-slate-200">
+                @if (log.highlightPath) {
+                  Archivo procesado &rarr; <span class="text-teal-300 font-semibold underline">{{ log.highlightPath }}</span>
+                } @else if (log.highlightSender) {
+                  Mensaje de: <span class="text-cyan-300 font-medium">{{ log.highlightSender }}</span>
+                } @else {
+                  {{ log.text }}
+                }
+              </span>
             }
-          }
-        </div>
+          </div>
+        }
       </div>
 
-      <!-- System Health Ring Pod -->
-      <div class="p-6 rounded-3xl bg-gradient-to-b from-white/[0.04] to-black/40 backdrop-blur-3xl shadow-[0_30px_70px_rgba(0,0,0,0.6)] border border-white/5 space-y-4">
-        <h2 class="text-sm font-bold text-white tracking-tight flex items-center justify-between">
-          <span>Telemetría de la Máquina</span>
-          <span class="text-xs text-emerald-400 font-medium flex items-center gap-1">
-            <mat-icon class="text-xs">check_circle</mat-icon>
-            Nominal
-          </span>
-        </h2>
-
-        <!-- Memory Gauge Bar -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between text-xs font-mono">
-            <span class="text-slate-400">RAM Utilizada</span>
-            <span class="text-slate-200">{{ botService.systemStats().ramUsedMb }}MB ({{ ramPercentage() }}%)</span>
-          </div>
-          <div class="w-full h-2 rounded-full bg-white/5 overflow-hidden p-0.5">
-            <div 
-              class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
-              [style.width.%]="ramPercentage()"
-            ></div>
-          </div>
+      <!-- Command Dispatcher -->
+      <div class="pt-3 border-t border-white/5 flex items-center gap-3">
+        <div class="relative flex-1">
+          <input
+            type="text"
+            [formControl]="messageInput"
+            (keydown)="handleKeyDown($event)"
+            placeholder="Inyectar mensaje o comando al bot..."
+            class="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all font-sans backdrop-blur-xl"
+          />
         </div>
 
-        <!-- Disk Gauge Bar -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between text-xs font-mono">
-            <span class="text-slate-400">Almacenamiento Multimedia</span>
-            <span class="text-slate-200">{{ botService.totalImagesVolumeFormatted() }} / {{ botService.systemStats().diskTotalGb }}GB</span>
-          </div>
-          <div class="w-full h-2 rounded-full bg-white/5 overflow-hidden p-0.5">
-            <div 
-              class="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
-              [style.width.%]="diskPercentage()"
-            ></div>
-          </div>
-        </div>
+        <button
+          type="button"
+          (click)="handleSendMessage()"
+          title="Enviar"
+          class="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all active:scale-95 shrink-0 cursor-pointer"
+        >
+          <mat-icon class="text-base">send</mat-icon>
+          <span class="hidden sm:inline">Ejecutar</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Organic Horizon: Cinematic Media Ribbon (Zero Box Borders) -->
+  <!-- Cinematic Media Ribbon -->
   <section class="space-y-4" aria-label="Galería fluida de imágenes capturadas">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
@@ -396,7 +269,7 @@
       <button
         type="button"
         (click)="navigateToImages()"
-        class="text-xs font-semibold text-purple-300 hover:text-purple-200 flex items-center gap-1 transition-colors"
+        class="text-xs font-semibold text-purple-300 hover:text-purple-200 flex items-center gap-1 transition-colors cursor-pointer"
       >
         <span>Ver todas ({{ botService.savedImagesCount() }})</span>
         <mat-icon class="text-sm">arrow_forward</mat-icon>
@@ -470,7 +343,7 @@
           <button
             type="button"
             (click)="closeImageModal()"
-            class="w-9 h-9 rounded-xl bg-white/5 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            class="w-9 h-9 rounded-xl bg-white/5 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           >
             <mat-icon class="text-lg">close</mat-icon>
           </button>
