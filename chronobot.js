@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const { createConnection } = require('node:net');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { inspect } = require('node:util');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
@@ -107,7 +108,26 @@ function emit(event) {
 }
 
 function log(level, message, details) {
-  emit({ type: 'log', level, message, details });
+  const serializableDetails = details instanceof Error
+    ? details.stack || details.message
+    : details;
+  emit({ type: 'log', level, message, details: serializableDetails });
+}
+
+function getErrorMessage(error) {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    return message ? `${error.name}: ${message}` : inspect(error, { depth: 3, breakLength: 120 });
+  }
+  if (typeof error === 'string') return error;
+  if (error === undefined || error === null) return 'Error sin información adicional.';
+  return inspect(error, { depth: 3, breakLength: 120 });
+}
+
+function getErrorDetails(error) {
+  if (error instanceof Error) return error.stack || error.message;
+  if (error === undefined || error === null) return 'No se recibió un objeto de error con más detalles.';
+  return inspect(error, { depth: 5, breakLength: 120 });
 }
 
 function isProcessAlive(pid) {
@@ -232,7 +252,7 @@ async function resolveSender(client, message) {
   }
 
   if (senderId.endsWith('@lid')) {
-    log('log', 'Resolviendo LID:', senderId);
+    log('log', `Resolviendo LID ${senderId}`);
     try {
       if (typeof client.getContactLidAndPhone !== 'function') {
         log('error', 'Esta versión de whatsapp-web.js no dispone de getContactLidAndPhone(). Actualiza la dependencia.');
@@ -253,13 +273,13 @@ async function resolveSender(client, message) {
       }
 
       if (phoneNumber) {
-        log('log', 'Número real resuelto:', phoneNumber);
+        log('log', `Número real resuelto para LID ${senderId}: +${phoneNumber}`);
       } else {
-        log('warn', 'WhatsApp no ha devuelto un número de teléfono para este LID:', senderId);
+        log('warn', `WhatsApp no ha devuelto un número de teléfono para el LID ${senderId}`);
       }
       return { phoneNumber, contact };
     } catch (error) {
-      log('error', 'Error resolviendo el LID:', error?.stack || error);
+      log('error', `Error resolviendo el LID ${senderId}: ${getErrorMessage(error)}`, getErrorDetails(error));
       return { phoneNumber: null, contact: null };
     }
   }
@@ -342,8 +362,12 @@ function createBot() {
   client.on('change_state', state => log('log', 'Estado de WhatsApp:', state));
 
   client.on('message', async message => {
-    log('log', `Mensaje recibido de ${message.from}: ${message.body || '(sin texto)'}`, {
+    let senderContext = `remitente ${message.from || 'desconocido'}`;
+    const initialType = [message.type, message._data?.type]
+      .find(value => typeof value === 'string' && value.trim()) || 'desconocido';
+    log('log', `Mensaje recibido: origen ${message.author || message.from || 'desconocido'}; tipo ${initialType}; multimedia ${message.hasMedia ? 'sí' : 'no'}; texto ${message.body || '(sin texto)'}`, {
       from: message.from,
+      author: message.author,
       type: message.type,
       hasMedia: message.hasMedia,
       body: message.body || ''
@@ -362,20 +386,21 @@ function createBot() {
 
       const { phoneNumber } = await resolveSender(client, message);
       if (!phoneNumber) {
-        log('warn', 'No se pudo resolver el teléfono. Mensaje no procesado por seguridad.');
+        log('warn', `No se pudo resolver el teléfono de ${senderContext}. Mensaje no procesado por seguridad.`);
         return;
       }
 
       const currentAllowedNumbers = buildAllowedNumbers(loadEmployees());
       const contactName = currentAllowedNumbers[phoneNumber];
+      senderContext = `${contactName || 'contacto no autorizado'} (+${phoneNumber}; origen ${message.author || message.from})`;
       if (!contactName) {
-        log('warn', 'Número no autorizado:', phoneNumber);
+        log('warn', `Número no autorizado: ${senderContext}`);
         emit({ type: 'unauthorized', phoneNumber });
         return;
       }
 
       allowedNumbers = currentAllowedNumbers;
-      log('log', 'Contacto autorizado:', contactName);
+      log('log', `Contacto autorizado: ${contactName} (+${phoneNumber})`);
 
       if (!message.hasMedia) {
         log('log', 'Mensaje sin multimedia; no hay acción configurada.');
@@ -383,8 +408,10 @@ function createBot() {
         return;
       }
 
-      if (!['image', 'document'].includes(message.type)) {
-        log('log', 'Tipo de multimedia ignorado:', message.type);
+      const messageType = [message.type, message._data?.type]
+        .find(value => typeof value === 'string' && value.trim()) || 'desconocido';
+      if (messageType !== 'desconocido' && !['image', 'document'].includes(messageType)) {
+        log('log', `Multimedia ignorada: tipo ${messageType}; remitente ${senderContext}.`);
         return;
       }
 
@@ -392,8 +419,15 @@ function createBot() {
       if (!media?.data) {
         throw new Error('WhatsApp no ha devuelto datos multimedia.');
       }
-      if (!String(media.mimetype || '').toLowerCase().startsWith('image/')) {
-        log('warn', 'El adjunto no es una imagen:', media.mimetype || 'tipo desconocido');
+      const mimeType = String(media.mimetype || '').toLowerCase();
+      if (!mimeType.startsWith('image/')) {
+        log('warn', `Adjunto rechazado: tipo ${messageType}; MIME ${mimeType || 'desconocido'}; remitente ${senderContext}. Solo se aceptan imágenes como documento.`);
+        return;
+      }
+      if (messageType !== 'document') {
+        const formatMessage = '🚨🚨 Formato Incorrecto 🚨🚨 Recuerda HACER la foto desde tu cámara. Adjuntar la imagen de tu Registro cómo Documento. 📲 Pasos a Seguir:  1. Clip 📎 2. Documento 📄 3.Seleccionar Imagen 4.Enviar ';
+        await sendText(client, phoneNumber, formatMessage);
+        log('warn', `Imagen válida rechazada por formato (${messageType}): se indicó a ${contactName} (+${phoneNumber}) que la envíe como documento.`);
         return;
       }
 
@@ -408,9 +442,11 @@ function createBot() {
 
       const replyText = `Gracias ${contactName}, tu foto ${saved.fileName} se ha guardado correctamente.`;
       await sendText(client, phoneNumber, replyText);
-      log('log', 'Confirmación enviada.');
+      log('log', `Confirmación enviada a ${contactName} (+${phoneNumber}).`);
     } catch (error) {
-      log('error', 'Error procesando el mensaje:', error?.stack || error);
+      const errorMessage = getErrorMessage(error);
+      const errorDetails = getErrorDetails(error);
+      log('error', `Error procesando mensaje de ${senderContext}: ${errorMessage}`, errorDetails);
     }
   });
 

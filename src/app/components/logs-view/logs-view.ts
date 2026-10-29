@@ -279,6 +279,9 @@ import { BotService } from '../../services/bot.service';
                   } @else {
                     {{ log.text }}
                   }
+                  @if (log.details) {
+                    <span class="block w-full mt-1.5 whitespace-pre-wrap break-words text-slate-400">{{ log.details }}</span>
+                  }
                 </span>
               }
             </div>

@@ -16,6 +16,7 @@ export interface LogEntry {
   time: string;
   level: LogLevel;
   text: string;
+  details?: string;
   isQr?: boolean;
   highlightPath?: string;
   highlightSender?: string;
