@@ -33,6 +33,7 @@ app.get('/api/bot/system-stats', (req, res) => {
   const freeRam = os.freemem();
   const usedRam = totalRam - freeRam;
   const status = chronoBotSingleton.getStatus();
+  const isActive = status.status === 'active';
 
   res.json({
     nodeVersion: process.version,
@@ -41,11 +42,11 @@ app.get('/api/bot/system-stats', (req, res) => {
     ramTotalMb: Math.round(totalRam / (1024 * 1024)),
     diskUsedGb: 0.24,
     diskTotalGb: 15.0,
-    isHealthy: status.status === 'active',
-    healthTitle: status.status === 'active' ? 'Todo funcionando' : 'Socket en espera',
-    healthMessage: status.status === 'active'
+    isHealthy: isActive,
+    healthTitle: isActive ? 'Todo funcionando' : 'Bot apagado',
+    healthMessage: isActive
       ? `Bot conectado y procesando mensajes. ${status.authorizedCount} contactos autorizados.`
-      : 'Escanea el código QR para conectar WhatsApp.',
+      : 'La aplicación de WhatsApp no está funcionando. Escanea el código QR para conectar el bot.',
     uptimeSeconds: status.uptimeSeconds
   });
 });

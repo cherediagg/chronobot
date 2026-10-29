@@ -7,19 +7,19 @@ import { BotStatus, LogLevel, LogEntry, BotEvent, SavedImage, Contact, SystemSta
 })
 export class BotService {
   // Bot Operational State
-  readonly status = signal<BotStatus>('active');
+  readonly status = signal<BotStatus>('stopped');
   readonly uptimeSeconds = signal<number>(0);
   readonly autoScroll = signal<boolean>(true);
   readonly activeScreen = signal<'inicio' | 'logs' | 'imagenes' | 'contactos' | 'configuracion'>('inicio');
 
   // WhatsApp Web QR Pairing State
   readonly qrData = signal<QrData>({
-    raw: '2@9BqW4xZlA9cM=,4zL9xVqW+7KmQ1nO=,88A2xLmOpQ==',
+    raw: '',
     dataUrl: '',
     generatedAt: Date.now(),
     expiresInSeconds: 25,
     secondsRemaining: 25,
-    connectedPhone: '+52 1 55 1123 4567'
+    connectedPhone: ''
   });
   readonly qrSecondsLeft = signal<number>(25);
   readonly showQrModal = signal<boolean>(false);
@@ -49,7 +49,7 @@ export class BotService {
   // Live Clock
   readonly currentTimeFormatted = signal<string>(new Date().toLocaleTimeString('es-ES'));
 
-  // System Stats (Updated with real backend metrics)
+  // System Stats
   readonly systemStats = signal<SystemStats>({
     nodeVersion: 'Node.js',
     os: 'Linux',
@@ -57,15 +57,15 @@ export class BotService {
     ramTotalMb: 1024,
     diskUsedGb: 0.1,
     diskTotalGb: 15.0,
-    isHealthy: true,
-    healthTitle: 'Sistema en línea',
-    healthMessage: 'Sincronizando estado en tiempo real...'
+    isHealthy: false,
+    healthTitle: 'Bot apagado',
+    healthMessage: 'La aplicación de WhatsApp no está funcionando. Escanea el código QR para conectar el bot.'
   });
 
   // Bot Configuration
   readonly config = signal<BotConfig>({
-    botName: 'Fernet WhatsApp Bot',
-    sessionName: 'fernet_baileys_auth',
+    botName: 'ChronoBot WhatsApp',
+    sessionName: 'chronobot_session',
     prefix: '!',
     saveDirectory: '/imagenes',
     groupFolderByContact: true,
@@ -73,7 +73,7 @@ export class BotService {
     autoScrollLogs: true,
     notifyUnauthorized: true,
     autoReplyEnabled: true,
-    welcomeMessage: '¡Hola! Soy Fernet Bot. Tu imagen ha sido recibida y guardada exitosamente.',
+    welcomeMessage: '¡Hola! Tu imagen ha sido recibida y guardada exitosamente.',
     unauthorizedMessage: 'Aviso: Tu número no está autorizado para enviar archivos a este bot.',
     maxImageSizeMb: 16
   });
@@ -129,10 +129,8 @@ export class BotService {
 
   private initBackendSync() {
     if (typeof window !== 'undefined') {
-      // First sync
       this.syncAllFromBackend();
 
-      // Periodic synchronization from ChronoBot backend (every 3 seconds)
       this.backendPollInterval = setInterval(() => {
         this.pollChronoBotState();
       }, 3000);
@@ -185,7 +183,7 @@ export class BotService {
         this.systemStats.set(statsRes.value);
       }
     } catch {
-      // Fallback gracefully to memory values
+      // Ignore network errors on initial sync
     }
   }
 
@@ -225,7 +223,7 @@ export class BotService {
         this.systemStats.set(statsRes.value);
       }
     } catch {
-      // Silently ignore transient network glitches
+      // Ignore network errors
     }
   }
 
@@ -261,13 +259,11 @@ export class BotService {
   }
 
   private startLiveClockAndUptime() {
-    // Keep ticking uptime, live clock and QR expiration countdown
     if (typeof window !== 'undefined') {
       this.timerInterval = setInterval(() => {
         if (this.status() === 'active') {
           this.uptimeSeconds.update(s => s + 1);
         } else {
-          // When not connected, countdown the QR expiration (like WhatsApp Web)
           this.qrSecondsLeft.update(sec => {
             if (sec <= 1) {
               void this.regenerateQr();
@@ -279,13 +275,12 @@ export class BotService {
         this.updateClockString();
       }, 1000);
 
-      // Ensure initial QR code image is ready
       void this.ensureQrDataUrl();
     }
   }
 
   async ensureQrDataUrl() {
-    if (!this.qrData().dataUrl && typeof window !== 'undefined') {
+    if (!this.qrData().dataUrl && this.qrData().raw && typeof window !== 'undefined') {
       try {
         const url = await QRCode.toDataURL(this.qrData().raw, {
           width: 340,
@@ -323,7 +318,7 @@ export class BotService {
   async startBot() {
     if (this.status() === 'active') return;
     this.status.set('connecting');
-    this.addLog('INFO', 'Iniciando cliente de WhatsApp (chronobot.js)...');
+    this.addLog('INFO', 'Iniciando cliente de WhatsApp...');
 
     try {
       const res = await fetch('/api/bot/control', {
@@ -357,7 +352,7 @@ export class BotService {
       }
       await this.pollChronoBotState();
     } catch {
-      this.addLog('WARN', 'Cliente de WhatsApp detenido por el usuario.');
+      this.addLog('WARN', 'Cliente de WhatsApp detenido (Bot Apagado).');
     }
   }
 
@@ -379,11 +374,10 @@ export class BotService {
       }, 1100);
     } catch {
       this.uptimeSeconds.set(0);
-      this.status.set('active');
+      this.status.set('stopped');
     }
   }
 
-  // WhatsApp QR Pairing Methods
   async simulateQrScan(customPhone = '+52 1 55 1123 4567') {
     this.isScanning.set(true);
     try {
@@ -403,8 +397,6 @@ export class BotService {
     } catch {
       this.status.set('active');
       this.addLog('INFO', `[QR Escaneado] Dispositivo móvil vinculado: ${customPhone}`);
-      this.addLog('INFO', 'Autenticación correcta (Sesión persistida con LocalAuth).');
-      this.addLog('INFO', 'Cliente conectado y listo.');
     } finally {
       this.isScanning.set(false);
       this.showQrModal.set(false);
@@ -421,10 +413,6 @@ export class BotService {
       const data = await res.json();
       if (data.status?.qrData) {
         this.qrData.set(data.status.qrData);
-      } else {
-        const randToken = '2@' + Math.random().toString(36).substring(2, 10) + '==';
-        const url = await QRCode.toDataURL(randToken, { width: 340, margin: 2, color: { dark: '#031c13', light: '#ffffff' } });
-        this.qrData.update(d => ({ ...d, raw: randToken, dataUrl: url, generatedAt: Date.now() }));
       }
       this.qrSecondsLeft.set(25);
       await this.pollChronoBotState();
@@ -450,11 +438,9 @@ export class BotService {
       this.qrSecondsLeft.set(25);
       await this.pollChronoBotState();
     } catch {
-      this.status.set('waiting_qr');
+      this.status.set('stopped');
       this.qrSecondsLeft.set(25);
-      this.addLog('WARN', 'Cliente de WhatsApp desconectado.');
-      this.addLog('INFO', 'Escanea el nuevo código QR para reconectar:');
-      this.addLog('INFO', '[QR]', { isQr: true });
+      this.addLog('WARN', 'Bot de WhatsApp apagado / desconectado.');
     }
   }
 
@@ -490,13 +476,9 @@ export class BotService {
       });
       await this.pollChronoBotState();
     } catch {
-      const telemetryMessages = [
-        'Heartbeat de conexión activo · Socket Baileys verificado (latencia: 14ms)',
-        'Sincronización de cola de mensajes completada · 0 mensajes pendientes',
-        'Socket de WhatsApp en estado READY · Sesión autenticada y cifrada'
-      ];
-      const msg = telemetryMessages[Math.floor(Math.random() * telemetryMessages.length)];
-      this.addLog('INFO', msg);
+      if (this.status() === 'active') {
+        this.addLog('INFO', 'Heartbeat de conexión activo');
+      }
     }
   }
 
@@ -509,14 +491,7 @@ export class BotService {
       });
       await this.pollChronoBotState();
     } catch {
-      this.logs.set([
-        {
-          id: 'log-' + Date.now(),
-          time: this.getCurrentTimeString(),
-          level: 'INFO',
-          text: 'Consola de logs limpiada.'
-        }
-      ]);
+      this.logs.set([]);
     }
   }
 
@@ -529,13 +504,12 @@ export class BotService {
     this.autoScroll.update(val => !val);
   }
 
-  // Interactive Message Sender / Simulation through ChronoBot backend
   async sendTestMessage(rawMessage: string, customSenderPhone?: string) {
     const text = rawMessage.trim();
     if (!text) return;
 
     if (this.status() !== 'active') {
-      this.addLog('WARN', `No se pudo enviar "${text}": el bot se encuentra inactivo.`);
+      this.addLog('WARN', `No se pudo enviar "${text}": el bot de WhatsApp se encuentra apagado.`);
       return;
     }
 

@@ -1,0 +1,36 @@
+
+> ai-studio-angular-app@0.0.0 dev
+> cross-env ng serve --port=3000 --host=0.0.0.0 --allowed-hosts=true ${DISABLE_HMR:+--live-reload=false}
+
+
+Warning: This is a simple server for use in testing or debugging Angular applications
+locally. It hasn't been reviewed for security issues.
+
+Binding this server to an open connection can result in compromising your application or
+computer. Using a different host than the one passed to the "--host" flag might result in
+websocket connection issues.
+
+❯ Building...
+✔ Building...
+Browser bundles
+Initial chunk files  | Names            |  Raw size
+main.js              | main             | 379.59 kB |
+styles.css           | styles           | 122.61 kB |
+
+                     | Initial total    | 502.19 kB
+
+
+Server bundles
+Initial chunk files  | Names            |  Raw size
+main.server.mjs      | main.server      | 380.84 kB |
+server.mjs           | server           |  37.17 kB |
+polyfills.server.mjs | polyfills.server | 303 bytes |
+
+Application bundle generation complete. [5.306 seconds] - 2026-10-29T16:37:34.104Z
+
+Watch mode enabled. Watching for file changes...
+NOTE: Raw file sizes do not reflect development server per-request transformations.
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: http://192.168.0.2:3000/
+Allowing all hosts via "*" is a security risk. This configuration should only be used when validation for "Host" and "X-Forwarded-Host" headers is performed in another layer, such as a load balancer or reverse proxy. For more information see: https://angular.dev/best-practices/security#preventing-server-side-request-forgery-ssrf
+NG02801: Angular detected that `HttpClient` is not configured to use `fetch` APIs. It's strongly recommended to enable `fetch` for applications that use Server-Side Rendering for better performance and compatibility. To enable `fetch`, add the `withFetch()` to the `provideHttpClient()` call at the root of the application.
