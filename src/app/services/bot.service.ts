@@ -1,122 +1,51 @@
-import { Injectable, signal, computed } from '@angular/core';
-import { BotStatus, LogLevel, LogEntry, BotEvent, SavedImage, Contact, SystemStats, BotConfig, QrData } from '../models/bot.model';
+import { Injectable, inject, signal } from '@angular/core';
+import { BotControlService } from './bot-control.service';
+import { LogsService } from './logs.service';
+import { ContactsService } from './contacts.service';
+import { MediaService } from './media.service';
+import { BotEvent, Contact, BotConfig } from '../models/bot.model';
 
 @Injectable({
   providedIn: 'root'
 })
 export class BotService {
-  // Bot Operational State
-  readonly status = signal<BotStatus>('stopped');
-  readonly uptimeSeconds = signal<number>(0);
-  readonly autoScroll = signal<boolean>(true);
-  readonly activeScreen = signal<'inicio' | 'logs' | 'imagenes' | 'contactos' | 'configuracion'>('inicio');
+  readonly botControl = inject(BotControlService);
+  readonly logsService = inject(LogsService);
+  readonly contactsService = inject(ContactsService);
+  readonly mediaService = inject(MediaService);
 
-  // WhatsApp Web QR Pairing State
-  readonly qrData = signal<QrData>({
-    raw: '',
-    dataUrl: '',
-    generatedAt: Date.now(),
-    expiresInSeconds: 20,
-    connectedPhone: ''
-  });
-  readonly showQrModal = signal<boolean>(false);
-  readonly isWhatsAppConnected = computed(() => this.status() === 'active');
+  // Operational & Bot State
+  readonly status = this.botControl.status;
+  readonly uptimeSeconds = this.botControl.uptimeSeconds;
+  readonly qrData = this.botControl.qrData;
+  readonly showQrModal = this.botControl.showQrModal;
+  readonly isWhatsAppConnected = this.botControl.isWhatsAppConnected;
+  readonly systemStats = this.botControl.systemStats;
+  readonly config = this.botControl.config;
+  readonly formattedUptime = this.botControl.formattedUptime;
 
-  // Persistent Employees File Metadata
-  readonly employeesFileMeta = signal<{
-    relativePath: string;
-    absolutePath?: string;
-    exists: boolean;
-    sizeBytes: number;
-    modifiedAt: string;
-    employeesCount: number;
-    allowedCount: number;
-    rawJson?: string;
-  }>({
-    relativePath: 'data/employees.json',
-    exists: true,
-    sizeBytes: 0,
-    modifiedAt: new Date().toISOString(),
-    employeesCount: 0,
-    allowedCount: 0,
-    rawJson: ''
-  });
+  // Logs & Navigation State
+  readonly logs = this.logsService.logs;
+  readonly autoScroll = this.logsService.autoScroll;
+  readonly activeScreen = this.logsService.activeScreen;
 
-  // System Stats
-  readonly systemStats = signal<SystemStats>({
-    nodeVersion: 'Node.js',
-    os: 'Linux',
-    ramUsedMb: 0,
-    ramTotalMb: 1024,
-    diskUsedGb: 0.1,
-    diskTotalGb: 15.0,
-    isHealthy: false,
-    healthTitle: 'Bot apagado',
-    healthMessage: 'La aplicación de WhatsApp no está funcionando. Escanea el código QR para conectar el bot.'
-  });
+  // Contacts State
+  readonly contacts = this.contactsService.contacts;
+  readonly employeesFileMeta = this.contactsService.employeesFileMeta;
+  readonly authorizedContactsCount = this.contactsService.authorizedContactsCount;
 
-  // Bot Configuration
-  readonly config = signal<BotConfig>({
-    botName: 'ChronoBot WhatsApp',
-    sessionName: 'chronobot_session',
-    prefix: '!',
-    saveDirectory: '/imagenes',
-    groupFolderByContact: true,
-    groupFolderByMonth: true,
-    autoScrollLogs: true,
-    notifyUnauthorized: true,
-    autoReplyEnabled: true,
-    welcomeMessage: '¡Hola! Tu imagen ha sido recibida y guardada exitosamente.',
-    unauthorizedMessage: 'Aviso: Tu número no está autorizado para enviar archivos a este bot.',
-    maxImageSizeMb: 16
-  });
+  // Media State
+  readonly savedImages = this.mediaService.savedImages;
+  readonly savedImagesCount = this.mediaService.savedImagesCount;
+  readonly totalImagesVolumeFormatted = this.mediaService.totalImagesVolumeFormatted;
+  readonly firstFiveImages = this.mediaService.firstFiveImages;
 
-  // Operational Real-Time Signals
-  readonly logs = signal<LogEntry[]>([]);
+  // Events
   readonly events = signal<BotEvent[]>([]);
-  readonly savedImages = signal<SavedImage[]>([]);
-  readonly contacts = signal<Contact[]>([]);
 
-  // Computed Values
-  readonly authorizedContactsCount = computed(() => {
-    return this.contacts().filter(c => c.authorized).length;
-  });
-
-  readonly savedImagesCount = computed(() => {
-    return this.savedImages().length;
-  });
-
-  readonly totalImagesVolumeFormatted = computed(() => {
-    let totalBytes = 0;
-    for (const img of this.savedImages()) {
-      if (img.size.includes('MB')) {
-        totalBytes += parseFloat(img.size) * 1024 * 1024;
-      } else if (img.size.includes('KB')) {
-        totalBytes += parseFloat(img.size) * 1024;
-      }
-    }
-    if (totalBytes >= 1024 * 1024) {
-      return `${(totalBytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    return `${(totalBytes / 1024).toFixed(1)} KB`;
-  });
-
-  readonly formattedUptime = computed(() => {
-    const sec = this.uptimeSeconds();
-    const hours = Math.floor(sec / 3600);
-    const minutes = Math.floor((sec % 3600) / 60);
-    return `${hours}h ${minutes}m`;
-  });
-
-  readonly firstFiveImages = computed(() => {
-    return this.savedImages().slice(0, 5);
-  });
-
-  private timerInterval: ReturnType<typeof setInterval> | null = null;
   private backendPollInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.startLiveClockAndUptime();
     this.initBackendSync();
   }
 
@@ -146,7 +75,7 @@ export class BotService {
     }
   }
 
-  private async syncAllFromBackend() {
+  async syncAllFromBackend() {
     try {
       const [statusRes, logsRes, eventsRes, imagesRes, contactsRes, statsRes] = await Promise.allSettled([
         fetch('/api/bot/status').then(r => r.json()),
@@ -168,7 +97,7 @@ export class BotService {
       }
 
       if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value?.logs)) {
-        this.applyBackendLogs(logsRes.value.logs);
+        this.logsService.applyBackendLogs(logsRes.value.logs);
       }
 
       if (eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value?.events)) {
@@ -184,7 +113,7 @@ export class BotService {
           this.employeesFileMeta.set(contactsRes.value.file);
         }
         if (Array.isArray(contactsRes.value?.employees)) {
-          this.applyBackendEmployees(contactsRes.value.employees);
+          this.contactsService.applyBackendEmployees(contactsRes.value.employees);
         }
       }
 
@@ -196,7 +125,7 @@ export class BotService {
     }
   }
 
-  private async pollChronoBotState() {
+  async pollChronoBotState() {
     try {
       const [statusRes, logsRes, eventsRes, imagesRes, statsRes] = await Promise.allSettled([
         fetch('/api/bot/status').then(r => r.json()),
@@ -217,7 +146,7 @@ export class BotService {
       }
 
       if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value?.logs)) {
-        this.applyBackendLogs(logsRes.value.logs);
+        this.logsService.applyBackendLogs(logsRes.value.logs);
       }
 
       if (eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value?.events)) {
@@ -236,201 +165,49 @@ export class BotService {
     }
   }
 
-  private formatLogDetails(details: unknown): string | undefined {
-    if (details === undefined || details === null || details === '') return undefined;
-    if (details instanceof Error) return details.stack || details.message;
-    if (typeof details === 'string') return details;
-    try {
-      return JSON.stringify(details, null, 2) ?? String(details);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      return `[No se pudieron mostrar los detalles del log: ${message}]`;
-    }
-  }
-
-  private applyBackendLogs(rawLogs: { id?: string; time?: string; level?: LogLevel; message?: string; text?: string; details?: unknown; isQr?: boolean; highlightPath?: string; highlightSender?: string }[]) {
-    const formatted: LogEntry[] = rawLogs.map(item => ({
-      id: item.id || 'log-' + Math.random(),
-      time: item.time || this.getCurrentTimeString(),
-      level: item.level || 'INFO',
-      text: item.message || item.text || '',
-      details: this.formatLogDetails(item.details),
-      isQr: item.isQr,
-      highlightPath: item.highlightPath,
-      highlightSender: item.highlightSender
-    }));
-
-    this.logs.set(formatted);
-  }
-
-  private applyBackendEmployees(employees: { id: string; nombre?: string; name?: string; telefono?: string; phone?: string; rol?: string; role?: string; activo?: boolean; authorized?: boolean; avatarUrl?: string; notes?: string; messagesReceived?: number; imagesReceived?: number; lastActive?: string }[]) {
-    const mapped: Contact[] = employees.map(emp => ({
-      id: emp.id,
-      name: emp.nombre || emp.name || 'Sin nombre',
-      phone: emp.telefono || emp.phone || '',
-      role: (emp.rol || emp.role || 'Contacto Autorizado') as Contact['role'],
-      authorized: emp.activo !== undefined ? Boolean(emp.activo) : (emp.authorized !== undefined ? Boolean(emp.authorized) : true),
-      avatarUrl: emp.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      messagesReceived: typeof emp.messagesReceived === 'number' ? emp.messagesReceived : 0,
-      imagesReceived: typeof emp.imagesReceived === 'number' ? emp.imagesReceived : 0,
-      lastActive: emp.lastActive || 'Reciente',
-      notes: emp.notes !== undefined ? emp.notes : 'Sincronizado desde data/employees.json'
-    }));
-
-    this.contacts.set(mapped);
-  }
-
-  private startLiveClockAndUptime() {
-    if (typeof window !== 'undefined') {
-      this.timerInterval = setInterval(() => {
-        if (this.status() === 'active') {
-          this.uptimeSeconds.update(s => s + 1);
-        }
-      }, 1000);
-    }
-  }
-
   getCurrentTimeString(): string {
-    const now = new Date();
-    const h = String(now.getHours()).padStart(2, '0');
-    const m = String(now.getMinutes()).padStart(2, '0');
-    const s = String(now.getSeconds()).padStart(2, '0');
-    return `${h}:${m}:${s}`;
+    return this.logsService.getCurrentTimeString();
   }
 
-  // Bot Actions
+  // Delegated Bot Control Actions
   async startBot() {
-    if (this.status() === 'active') return;
-    this.status.set('connecting');
-    this.addLog('INFO', 'Iniciando cliente de WhatsApp...');
-
-    try {
-      const res = await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start' })
-      });
-      const data = await res.json();
-      if (data.status) {
-        this.status.set(data.status.status);
-      }
-      if (!res.ok) throw new Error(data.message || `El servidor respondió ${res.status}.`);
-      await this.pollChronoBotState();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (this.status() !== 'disconnected') this.status.set('stopped');
-      this.addLog('ERROR', `No se pudo iniciar WhatsApp Web: ${message}`);
-    }
+    await this.botControl.startBot();
+    await this.pollChronoBotState();
   }
 
   async stopBot() {
-    if (this.status() === 'stopped') return;
-
-    try {
-      const res = await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'stop' })
-      });
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
-      const data = await res.json();
-      if (data.status) {
-        this.status.set(data.status.status);
-      }
-      await this.pollChronoBotState();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.addLog('ERROR', `No se pudo detener WhatsApp Web: ${message}`);
-    }
+    await this.botControl.stopBot();
+    await this.pollChronoBotState();
   }
 
   async restartBot() {
-    this.status.set('restarting');
-
-    try {
-      const res = await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'restart' })
-      });
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
-      const data = await res.json();
-      if (data.status) {
-        this.status.set(data.status.status);
-      }
-      setTimeout(() => {
-        this.pollChronoBotState();
-      }, 1100);
-    } catch (error: unknown) {
-      this.uptimeSeconds.set(0);
-      this.status.set('stopped');
-      const message = error instanceof Error ? error.message : String(error);
-      this.addLog('ERROR', `No se pudo reiniciar WhatsApp Web: ${message}`);
-    }
+    await this.botControl.restartBot();
+    setTimeout(() => {
+      this.pollChronoBotState();
+    }, 1100);
   }
 
   async regenerateQr() {
-    try {
-      const res = await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'regenerate_qr' })
-      });
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
-      const data = await res.json();
-      if (data.status?.qrData) {
-        this.qrData.set(data.status.qrData);
-      }
-      await this.pollChronoBotState();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.addLog('ERROR', `No se pudo reiniciar la conexión de WhatsApp: ${message}`);
-    }
+    await this.botControl.regenerateQr();
+    await this.pollChronoBotState();
   }
 
   async disconnectWhatsApp() {
-    try {
-      const res = await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'disconnect' })
-      });
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
-      const data = await res.json();
-      if (data.status) {
-        this.status.set(data.status.status);
-        if (data.status.qrData) {
-          this.qrData.set(data.status.qrData);
-        }
-      }
-      await this.pollChronoBotState();
-    } catch (error: unknown) {
-      this.status.set('stopped');
-      const message = error instanceof Error ? error.message : String(error);
-      this.addLog('ERROR', `No se pudo cerrar la sesión de WhatsApp: ${message}`);
-    }
+    await this.botControl.disconnectWhatsApp();
+    await this.pollChronoBotState();
   }
 
   openQrModal() {
-    this.showQrModal.set(true);
+    this.botControl.openQrModal();
   }
 
   closeQrModal() {
-    this.showQrModal.set(false);
+    this.botControl.closeQrModal();
   }
 
-  // Logs management
+  // Delegated Logs Actions
   addLog(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', text: string, options?: { isQr?: boolean; highlightPath?: string; highlightSender?: string }) {
-    const newEntry: LogEntry = {
-      id: 'log-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      time: this.getCurrentTimeString(),
-      level,
-      text,
-      isQr: options?.isQr,
-      highlightPath: options?.highlightPath,
-      highlightSender: options?.highlightSender
-    };
-    this.logs.update(list => [...list, newEntry]);
+    this.logsService.addLog(level, text, options);
   }
 
   async pollTelemetry() {
@@ -445,179 +222,71 @@ export class BotService {
   }
 
   async clearLogs() {
-    try {
-      await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'clear_logs' })
-      });
-      await this.pollChronoBotState();
-    } catch {
-      this.logs.set([]);
-    }
+    await this.logsService.clearLogs();
+    await this.pollChronoBotState();
   }
 
   exportLogs(): string {
-    const lines = this.logs().map(l => `${l.time} [${l.level}] ${l.text}`);
-    return lines.join('\n');
+    return this.logsService.exportLogs();
   }
 
   toggleAutoScroll() {
-    this.autoScroll.update(val => !val);
+    this.logsService.toggleAutoScroll();
   }
 
-  // Contact operations
+  // Delegated Contact Actions
   async addContact(contact: Omit<Contact, 'id' | 'messagesReceived' | 'imagesReceived' | 'lastActive'>) {
-    try {
-      const res = await fetch('/api/bot/contacts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: contact.name,
-          telefono: contact.phone,
-          rol: contact.role,
-          activo: contact.authorized,
-          avatarUrl: contact.avatarUrl
-        })
-      });
-      if (res.ok) {
-        await this.syncAllFromBackend();
-        return;
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLog('ERROR', `Error al registrar contacto en el servidor: ${msg}`);
+    const success = await this.contactsService.addContact(contact);
+    if (success) {
+      await this.syncAllFromBackend();
     }
   }
 
   async updateContact(contact: Contact) {
-    try {
-      const res = await fetch(`/api/bot/contacts/${contact.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: contact.name,
-          name: contact.name,
-          telefono: contact.phone,
-          phone: contact.phone,
-          rol: contact.role,
-          role: contact.role,
-          activo: contact.authorized,
-          authorized: contact.authorized,
-          notes: contact.notes
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.file) {
-          this.employeesFileMeta.set(data.file);
-        }
-        await this.syncAllFromBackend();
-        return true;
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLog('ERROR', `Error al actualizar contacto en el servidor: ${msg}`);
+    const success = await this.contactsService.updateContact(contact);
+    if (success) {
+      await this.syncAllFromBackend();
+      return true;
     }
     return false;
   }
 
   async reloadEmployeesFromFile() {
-    try {
-      const res = await fetch('/api/bot/contacts');
-      const data = await res.json();
-      if (data.file) {
-        this.employeesFileMeta.set(data.file);
-      }
-      if (Array.isArray(data.employees)) {
-        this.applyBackendEmployees(data.employees);
-      }
-      this.addLog('INFO', `Fichero data/employees.json recargado (${data.employees?.length || 0} registros)`);
-      return true;
-    } catch {
-      return false;
-    }
+    return this.contactsService.reloadEmployeesFromFile();
   }
 
-  async saveRawEmployeesJson(rawJson: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const res = await fetch('/api/bot/contacts/file', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawJson })
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (data.file) {
-          this.employeesFileMeta.set(data.file);
-        }
-        if (Array.isArray(data.employees)) {
-          this.applyBackendEmployees(data.employees);
-        }
-        await this.syncAllFromBackend();
-        return { success: true };
-      }
-      return { success: false, error: data.error || 'Error al guardar el archivo' };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, error: msg };
+  async saveRawEmployeesJson(rawJson: string) {
+    const res = await this.contactsService.saveRawEmployeesJson(rawJson);
+    if (res.success) {
+      await this.syncAllFromBackend();
     }
+    return res;
   }
 
   async toggleContactAuthorization(id: string) {
-    try {
-      const res = await fetch(`/api/bot/contacts/${id}/toggle`, {
-        method: 'PUT'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.file) {
-          this.employeesFileMeta.set(data.file);
-        }
-        await this.syncAllFromBackend();
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLog('ERROR', `Error al modificar permiso: ${msg}`);
+    const success = await this.contactsService.toggleContactAuthorization(id);
+    if (success) {
+      await this.syncAllFromBackend();
     }
   }
 
   async deleteContact(id: string) {
-    try {
-      const res = await fetch(`/api/bot/contacts/${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.file) {
-          this.employeesFileMeta.set(data.file);
-        }
-        await this.syncAllFromBackend();
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLog('ERROR', `Error al eliminar contacto del servidor: ${msg}`);
+    const success = await this.contactsService.deleteContact(id);
+    if (success) {
+      await this.syncAllFromBackend();
     }
   }
 
-  // Update Config
+  // Delegated Config
   updateConfig(newConfig: Partial<BotConfig>) {
-    this.config.update(c => ({ ...c, ...newConfig }));
-    this.addLog('INFO', 'Configuración del sistema actualizada correctamente.');
+    this.botControl.updateConfig(newConfig);
   }
 
-  // Delete saved image
+  // Delegated Image Actions
   async deleteImage(id: string) {
-    try {
-      const res = await fetch(`/api/bot/images/${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        await this.syncAllFromBackend();
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLog('ERROR', `Error al eliminar archivo de imagen del servidor: ${msg}`);
+    const success = await this.mediaService.deleteImage(id);
+    if (success) {
+      await this.syncAllFromBackend();
     }
   }
 }
