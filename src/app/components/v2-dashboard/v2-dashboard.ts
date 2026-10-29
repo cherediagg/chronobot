@@ -1,62 +1,76 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { BotService } from '../../services/bot.service';
 import { SavedImage } from '../../models/bot.model';
-import { WhatsappQr } from '../whatsapp-qr/whatsapp-qr';
+import { BotService } from '../../services/bot.service';
+import { ImageLightboxModal } from '../image-lightbox-modal/image-lightbox-modal';
+import { TerminalConsole } from '../terminal-console/terminal-console';
+import { DashboardMetrics } from './dashboard-metrics/dashboard-metrics';
+import { MediaRibbon } from './media-ribbon/media-ribbon';
 
 @Component({
   selector: 'app-v2-dashboard',
-  imports: [MatIconModule, WhatsappQr],
+  imports: [
+    MatIconModule,
+    DashboardMetrics,
+    TerminalConsole,
+    MediaRibbon,
+    ImageLightboxModal
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './v2-dashboard.html',
   styleUrl: './v2-dashboard.css'
 })
 export class V2Dashboard {
-  readonly botService = inject(BotService);
+  private readonly botService = inject(BotService);
 
-  @ViewChild('terminalContainer') private terminalContainer?: ElementRef<HTMLDivElement>;
+  readonly botStatus = this.botService.botStatus;
+  readonly contactsCount = this.botService.contactsCount;
+  readonly savedImagesCount = this.botService.savedImagesCount;
+  readonly uptime = this.botService.uptimeFormatted;
+  readonly logs = this.botService.logs;
+  readonly autoScrollLogs = this.botService.autoScrollLogs;
+  readonly qrData = this.botService.qrData;
+  readonly savedImages = this.botService.savedImages;
 
-  readonly selectedImageForModal = signal<SavedImage | null>(null);
+  readonly selectedImage = signal<SavedImage | null>(null);
 
-  constructor() {
-    effect(() => {
-      this.botService.logs();
-      const autoScroll = this.botService.autoScroll();
-      if (autoScroll && this.terminalContainer?.nativeElement) {
-        setTimeout(() => {
-          if (this.terminalContainer?.nativeElement) {
-            this.terminalContainer.nativeElement.scrollTop = this.terminalContainer.nativeElement.scrollHeight;
-          }
-        }, 50);
-      }
-    });
+  startBot() {
+    this.botService.startBot();
+  }
+
+  stopBot() {
+    this.botService.stopBot();
+  }
+
+  restartBot() {
+    this.botService.restartBot();
+  }
+
+  toggleAutoScroll(value: boolean) {
+    this.botService.setAutoScroll(value);
+  }
+
+  clearLogs() {
+    this.botService.clearLogs();
   }
 
   openImageDetails(img: SavedImage) {
-    this.selectedImageForModal.set(img);
+    this.selectedImage.set(img);
   }
 
-  closeImageModal() {
-    this.selectedImageForModal.set(null);
-  }
-
-  toggleBotFromStatus() {
-    if (this.botService.status() === 'active') {
-      void this.botService.stopBot();
-    } else if (this.botService.status() !== 'connecting') {
-      void this.botService.startBot();
-    }
-  }
-
-  navigateToImages() {
-    this.botService.activeScreen.set('imagenes');
-  }
-
-  navigateToContacts() {
-    this.botService.activeScreen.set('contactos');
+  closeImageDetails() {
+    this.selectedImage.set(null);
   }
 
   navigateToLogs() {
-    this.botService.activeScreen.set('logs');
+    this.botService.setActiveScreen('logs');
+  }
+
+  navigateToQr() {
+    this.botService.openQrModal();
+  }
+
+  navigateToImages() {
+    this.botService.setActiveScreen('imagenes');
   }
 }

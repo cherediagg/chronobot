@@ -1,0 +1,60 @@
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <!-- Bot Status Card -->
+  <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-5 backdrop-blur-xl relative overflow-hidden group hover:border-cyan-500/40 transition-all duration-300">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Estado del Bot</span>
+      <div class="w-8 h-8 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+        <mat-icon class="text-lg">smart_toy</mat-icon>
+      </div>
+    </div>
+    <div class="mt-4 flex items-baseline gap-2">
+      <span class="text-2xl font-black text-white capitalize">{{ botStatus() }}</span>
+      <span class="w-2.5 h-2.5 rounded-full" [ngClass]="(botStatus() === 'active' || botStatus() === 'connecting') ? 'bg-emerald-400 animate-pulse shadow-[0_0_100px_rgba(52,211,153,1)]' : 'bg-rose-500'"></span>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-1">ChronoBot WhatsApp Engine</p>
+  </div>
+
+  <!-- Contacts Count Card -->
+  <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-5 backdrop-blur-xl relative overflow-hidden group hover:border-cyan-500/40 transition-all duration-300">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Lista Blanca</span>
+      <div class="w-8 h-8 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+        <mat-icon class="text-lg">badge</mat-icon>
+      </div>
+    </div>
+    <div class="mt-4">
+      <span class="text-2xl font-black text-white font-mono">{{ contactsCount() }}</span>
+      <span class="text-xs text-slate-400 ml-1.5">contactos</span>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-1">Sincronizado con data/employees.json</p>
+  </div>
+
+  <!-- Saved Images Card -->
+  <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-5 backdrop-blur-xl relative overflow-hidden group hover:border-cyan-500/40 transition-all duration-300">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Imágenes Guardadas</span>
+      <div class="w-8 h-8 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+        <mat-icon class="text-lg">photo_library</mat-icon>
+      </div>
+    </div>
+    <div class="mt-4">
+      <span class="text-2xl font-black text-white font-mono">{{ savedImagesCount() }}</span>
+      <span class="text-xs text-slate-400 ml-1.5">archivos</span>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-1">public/saved_images/</p>
+  </div>
+
+  <!-- Uptime Card -->
+  <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-5 backdrop-blur-xl relative overflow-hidden group hover:border-cyan-500/40 transition-all duration-300">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tiempo en Línea</span>
+      <div class="w-8 h-8 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+        <mat-icon class="text-lg">timer</mat-icon>
+      </div>
+    </div>
+    <div class="mt-4">
+      <span class="text-2xl font-black text-white font-mono">{{ uptime() }}</span>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-1">Sesión activa actual</p>
+  </div>
+</div>
