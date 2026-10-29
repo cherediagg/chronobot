@@ -31,3 +31,4 @@ yarn-error.log*
 
 # Received employee images
 /public/imagenes/
+/data/employees.json
