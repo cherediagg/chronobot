@@ -5,7 +5,6 @@ export interface QrData {
   dataUrl: string;
   generatedAt: number;
   expiresInSeconds: number;
-  secondsRemaining?: number;
   pairingCode?: string;
   connectedPhone?: string;
 }

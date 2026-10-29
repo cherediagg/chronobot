@@ -149,39 +149,51 @@ app.delete('/api/bot/images/:id', (req, res) => {
   res.json({ success: Boolean(image), image, logs: chronoBotSingleton.getLogs(10) });
 });
 
-app.post('/api/bot/message', async (req, res) => {
-  try {
-    const result = await chronoBotSingleton.handleMessage(req.body);
-    res.json({ success: true, result, logs: chronoBotSingleton.getLogs(15) });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error processing message';
-    res.status(500).json({ error: message });
-  }
-});
-
 app.get('/api/bot/qr', (req, res) => {
   res.json({ success: true, qr: chronoBotSingleton.getQrData(), status: chronoBotSingleton.getStatus().status });
 });
 
+app.post('/api/bot/start', async (req, res) => {
+  await chronoBotSingleton.startBotProcess();
+  const status = chronoBotSingleton.getStatus();
+  const conflict = status.sessionConflict;
+  res.status(conflict ? 409 : status.status === 'stopped' ? 503 : 200).json({
+    success: !conflict && status.status !== 'stopped',
+    message: conflict
+      ? 'Ya hay una sesión de WhatsApp Web abierta con este perfil. Se evitó abrir un segundo navegador.'
+      : undefined,
+    status
+  });
+});
+
 app.post('/api/bot/control', async (req, res) => {
-  const { action, phone } = req.body;
+  const { action } = req.body;
+  let started = true;
   if (action === 'start') {
-    chronoBotSingleton.setStatus('active');
-  } else if (action === 'stop' || action === 'disconnect') {
+    started = await chronoBotSingleton.startBotProcess();
+  } else if (action === 'stop') {
+    await chronoBotSingleton.stopBotProcess();
+  } else if (action === 'disconnect') {
     await chronoBotSingleton.disconnectWhatsApp();
   } else if (action === 'restart') {
-    chronoBotSingleton.setStatus('restarting');
+    await chronoBotSingleton.restartBotProcess();
   } else if (action === 'clear_logs') {
     chronoBotSingleton.clearLogs();
-  } else if (action === 'poll') {
-    chronoBotSingleton.pollHeartbeat();
-  } else if (action === 'simulate_qr_scan') {
-    await chronoBotSingleton.simulateQrScan(phone);
   } else if (action === 'regenerate_qr') {
     await chronoBotSingleton.regenerateQr();
   }
 
-  res.json({ success: true, status: chronoBotSingleton.getStatus(), logs: chronoBotSingleton.getLogs(15) });
+  const status = chronoBotSingleton.getStatus();
+  const conflict = (action === 'start' && !started)
+    || (['start', 'restart', 'regenerate_qr'].includes(action) && status.sessionConflict);
+  res.status(conflict ? 409 : 200).json({
+    success: !conflict,
+    message: conflict
+      ? 'Ya hay una sesión de WhatsApp Web abierta con este perfil. Se evitó abrir un segundo navegador.'
+      : undefined,
+    status,
+    logs: chronoBotSingleton.getLogs(15)
+  });
 });
 
 /**

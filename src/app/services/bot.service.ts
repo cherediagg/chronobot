@@ -1,5 +1,4 @@
 import { Injectable, signal, computed } from '@angular/core';
-import QRCode from 'qrcode';
 import { BotStatus, LogLevel, LogEntry, BotEvent, SavedImage, Contact, SystemStats, BotConfig, QrData } from '../models/bot.model';
 
 @Injectable({
@@ -17,13 +16,10 @@ export class BotService {
     raw: '',
     dataUrl: '',
     generatedAt: Date.now(),
-    expiresInSeconds: 25,
-    secondsRemaining: 25,
+    expiresInSeconds: 20,
     connectedPhone: ''
   });
-  readonly qrSecondsLeft = signal<number>(25);
   readonly showQrModal = signal<boolean>(false);
-  readonly isScanning = signal<boolean>(false);
   readonly isWhatsAppConnected = computed(() => this.status() === 'active');
 
   // Persistent Employees File Metadata
@@ -45,9 +41,6 @@ export class BotService {
     allowedCount: 0,
     rawJson: ''
   });
-
-  // Live Clock
-  readonly currentTimeFormatted = signal<string>(new Date().toLocaleTimeString('es-ES'));
 
   // System Stats
   readonly systemStats = signal<SystemStats>({
@@ -129,11 +122,27 @@ export class BotService {
 
   private initBackendSync() {
     if (typeof window !== 'undefined') {
-      this.syncAllFromBackend();
+      void this.initializeBackend();
 
       this.backendPollInterval = setInterval(() => {
         this.pollChronoBotState();
       }, 3000);
+    }
+  }
+
+  private async initializeBackend() {
+    try {
+      const response = await fetch('/api/bot/start', { method: 'POST' });
+      const data = await response.json();
+      if (data.status?.status) this.status.set(data.status.status);
+      if (!response.ok) {
+        throw new Error(data.message || `El servidor respondió ${response.status}.`);
+      }
+      await this.syncAllFromBackend();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (this.status() !== 'disconnected') this.status.set('stopped');
+      this.addLog('ERROR', `No se pudo iniciar ChronoBot desde la API: ${message}`);
     }
   }
 
@@ -263,47 +272,9 @@ export class BotService {
       this.timerInterval = setInterval(() => {
         if (this.status() === 'active') {
           this.uptimeSeconds.update(s => s + 1);
-        } else {
-          this.qrSecondsLeft.update(sec => {
-            if (sec <= 1) {
-              void this.regenerateQr();
-              return 25;
-            }
-            return sec - 1;
-          });
         }
-        this.updateClockString();
       }, 1000);
-
-      void this.ensureQrDataUrl();
     }
-  }
-
-  async ensureQrDataUrl() {
-    if (!this.qrData().dataUrl && this.qrData().raw && typeof window !== 'undefined') {
-      try {
-        const url = await QRCode.toDataURL(this.qrData().raw, {
-          width: 340,
-          margin: 2,
-          color: { dark: '#031c13', light: '#ffffff' }
-        });
-        this.qrData.update(d => ({ ...d, dataUrl: url }));
-      } catch {
-        // Ignore
-      }
-    }
-  }
-
-  private updateClockString() {
-    const now = new Date();
-    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    const day = now.getDate();
-    const month = months[now.getMonth()];
-    const year = now.getFullYear();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    this.currentTimeFormatted.set(`${day} ${month} ${year}, ${hours}:${minutes}:${seconds}`);
   }
 
   getCurrentTimeString(): string {
@@ -330,15 +301,17 @@ export class BotService {
       if (data.status) {
         this.status.set(data.status.status);
       }
+      if (!res.ok) throw new Error(data.message || `El servidor respondió ${res.status}.`);
       await this.pollChronoBotState();
-    } catch {
-      this.status.set('active');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (this.status() !== 'disconnected') this.status.set('stopped');
+      this.addLog('ERROR', `No se pudo iniciar WhatsApp Web: ${message}`);
     }
   }
 
   async stopBot() {
     if (this.status() === 'stopped') return;
-    this.status.set('stopped');
 
     try {
       const res = await fetch('/api/bot/control', {
@@ -346,13 +319,15 @@ export class BotService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' })
       });
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
       const data = await res.json();
       if (data.status) {
         this.status.set(data.status.status);
       }
       await this.pollChronoBotState();
-    } catch {
-      this.addLog('WARN', 'Cliente de WhatsApp detenido (Bot Apagado).');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.addLog('ERROR', `No se pudo detener WhatsApp Web: ${message}`);
     }
   }
 
@@ -365,6 +340,7 @@ export class BotService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restart' })
       });
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
       const data = await res.json();
       if (data.status) {
         this.status.set(data.status.status);
@@ -372,34 +348,11 @@ export class BotService {
       setTimeout(() => {
         this.pollChronoBotState();
       }, 1100);
-    } catch {
+    } catch (error: unknown) {
       this.uptimeSeconds.set(0);
       this.status.set('stopped');
-    }
-  }
-
-  async simulateQrScan(customPhone = '+52 1 55 1123 4567') {
-    this.isScanning.set(true);
-    try {
-      const res = await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'simulate_qr_scan', phone: customPhone })
-      });
-      const data = await res.json();
-      if (data.status) {
-        this.status.set(data.status.status);
-        if (data.status.qrData) {
-          this.qrData.set(data.status.qrData);
-        }
-      }
-      await this.pollChronoBotState();
-    } catch {
-      this.status.set('active');
-      this.addLog('INFO', `[QR Escaneado] Dispositivo móvil vinculado: ${customPhone}`);
-    } finally {
-      this.isScanning.set(false);
-      this.showQrModal.set(false);
+      const message = error instanceof Error ? error.message : String(error);
+      this.addLog('ERROR', `No se pudo reiniciar WhatsApp Web: ${message}`);
     }
   }
 
@@ -410,14 +363,15 @@ export class BotService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'regenerate_qr' })
       });
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
       const data = await res.json();
       if (data.status?.qrData) {
         this.qrData.set(data.status.qrData);
       }
-      this.qrSecondsLeft.set(25);
       await this.pollChronoBotState();
-    } catch {
-      this.qrSecondsLeft.set(25);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.addLog('ERROR', `No se pudo reiniciar la conexión de WhatsApp: ${message}`);
     }
   }
 
@@ -428,6 +382,7 @@ export class BotService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'disconnect' })
       });
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}.`);
       const data = await res.json();
       if (data.status) {
         this.status.set(data.status.status);
@@ -435,18 +390,16 @@ export class BotService {
           this.qrData.set(data.status.qrData);
         }
       }
-      this.qrSecondsLeft.set(25);
       await this.pollChronoBotState();
-    } catch {
+    } catch (error: unknown) {
       this.status.set('stopped');
-      this.qrSecondsLeft.set(25);
-      this.addLog('WARN', 'Bot de WhatsApp apagado / desconectado.');
+      const message = error instanceof Error ? error.message : String(error);
+      this.addLog('ERROR', `No se pudo cerrar la sesión de WhatsApp: ${message}`);
     }
   }
 
   openQrModal() {
     this.showQrModal.set(true);
-    void this.ensureQrDataUrl();
   }
 
   closeQrModal() {
@@ -469,16 +422,12 @@ export class BotService {
 
   async pollTelemetry() {
     try {
-      await fetch('/api/bot/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'poll' })
-      });
+      const response = await fetch('/api/bot/status');
+      if (!response.ok) throw new Error(`El servidor respondió ${response.status}.`);
       await this.pollChronoBotState();
-    } catch {
-      if (this.status() === 'active') {
-        this.addLog('INFO', 'Heartbeat de conexión activo');
-      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.addLog('ERROR', `No se pudo consultar el estado de WhatsApp: ${message}`);
     }
   }
 
@@ -502,41 +451,6 @@ export class BotService {
 
   toggleAutoScroll() {
     this.autoScroll.update(val => !val);
-  }
-
-  async sendTestMessage(rawMessage: string, customSenderPhone?: string) {
-    const text = rawMessage.trim();
-    if (!text) return;
-
-    if (this.status() !== 'active') {
-      this.addLog('WARN', `No se pudo enviar "${text}": el bot de WhatsApp se encuentra apagado.`);
-      return;
-    }
-
-    const isPhoto = text.toLowerCase().includes('foto') || text.toLowerCase().includes('imagen') || text.toLowerCase().includes('img');
-    const sender = customSenderPhone ? `${customSenderPhone.replace(/\D/g, '')}@s.whatsapp.net` : '5215511234567@s.whatsapp.net';
-
-    try {
-      const response = await fetch('/api/bot/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: sender,
-          author: sender,
-          body: text,
-          hasMedia: isPhoto,
-          type: isPhoto ? 'image' : 'chat'
-        })
-      });
-
-      if (response.ok) {
-        await this.syncAllFromBackend();
-        return;
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLog('ERROR', `Error de red al procesar mensaje: ${msg}`);
-    }
   }
 
   // Contact operations

@@ -1,12 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import QRCode from 'qrcode';
-import { spawn, ChildProcess } from 'node:child_process';
+import { createConnection } from 'node:net';
+import { StringDecoder } from 'node:string_decoder';
+import { execFileSync, spawn, ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const chronobotPath = path.resolve(process.cwd(), 'chronobot.js');
 const chronobotModule = require(chronobotPath);
+const whatsappRequire = createRequire(require.resolve('whatsapp-web.js'));
+const puppeteer = whatsappRequire('puppeteer');
 
 export const EMPLOYEES_FILE_PATH = path.resolve(process.cwd(), 'data', 'employees.json');
 
@@ -63,10 +66,58 @@ export interface ChronoSavedImage {
   category?: string;
 }
 
+type ChronoBotStatus = 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected';
+
+interface BotProcessEvent {
+  type: string;
+  status?: ChronoBotStatus;
+  level?: 'log' | 'warn' | 'error' | 'debug';
+  message?: string;
+  details?: unknown;
+  raw?: string;
+  dataUrl?: string;
+  generatedAt?: number;
+  expiresInSeconds?: number;
+  connectedPhone?: string;
+  contactName?: string;
+  phoneNumber?: string;
+  body?: string;
+  filePath?: string;
+  fileName?: string;
+  ownerPid?: number;
+  emittedAt?: number;
+}
+
+interface ExternalSession {
+  pid: number;
+  token: string;
+}
+
+interface RuntimeStatusFile {
+  pid: number;
+  token: string;
+  status: ChronoBotStatus;
+  connectedPhone?: string;
+  qrData?: {
+    raw?: string;
+    dataUrl?: string;
+    generatedAt?: number;
+    expiresInSeconds?: number;
+  };
+  startedAt: number;
+  updatedAt: number;
+}
+
+interface RuntimeLogEnvelope {
+  id: string;
+  event: BotProcessEvent;
+  emittedAt?: number;
+}
+
 export class ChronoBotEngine {
   public static readonly IMAGES_ROOT_DIR = path.resolve(process.cwd(), 'public', 'imagenes');
 
-  private status: 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected' = 'stopped';
+  private status: ChronoBotStatus = 'stopped';
   private startTime = Date.now();
   private logs: ChronoLogEntry[] = [];
   private events: ChronoBotEvent[] = [];
@@ -74,18 +125,21 @@ export class ChronoBotEngine {
   private allowedNumbers: Record<string, string> = {};
   private savedImages: ChronoSavedImage[] = [];
   private botProcess: ChildProcess | null = null;
+  private startPromise: Promise<boolean> | null = null;
+  private sessionConflict = false;
+  private externalSession: ExternalSession | null = null;
+  private readonly processedExternalEventIds = new Set<string>();
 
   // WhatsApp Web QR Pairing State
   private currentRawQr = '';
   private currentQrDataUrl = '';
-  private qrGeneratedAt = Date.now();
-  private qrExpiresInSeconds = 25;
+  private qrGeneratedAt = 0;
+  private qrExpiresInSeconds = 20;
   private connectedPhone = '';
 
   constructor() {
     this.loadEmployeesFromFile();
     this.loadSavedImagesFromDisk();
-    void this.generateQrCode();
     this.initChronoLogs();
   }
 
@@ -157,7 +211,9 @@ export class ChronoBotEngine {
     try {
       this.allowedNumbers = chronobotModule.refreshAllowedNumbers();
       this.loadEmployeesFromFile();
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.addLogInternal('ERROR', `No se pudieron recargar los contactos: ${msg}`);
       this.loadEmployeesFromFile();
     }
     const count = Object.keys(this.allowedNumbers).length;
@@ -225,8 +281,14 @@ export class ChronoBotEngine {
   }
 
   private findPhoneByContactName(name: string): string {
+    const normalizeName = (value: string) => value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\s_-]/g, '')
+      .toLowerCase();
+
     for (const [phone, contactName] of Object.entries(this.allowedNumbers)) {
-      if (contactName.toLowerCase() === name.toLowerCase()) {
+      if (normalizeName(contactName) === normalizeName(name)) {
         return '+' + phone;
       }
     }
@@ -276,49 +338,461 @@ export class ChronoBotEngine {
     this.addLogInternal(mapped, message, undefined, { details });
   }
 
-  public async startBotProcess() {
-    if (this.botProcess) {
-      this.addLogInternal('WARN', 'El proceso del bot ya se encuentra en ejecución.');
+  private handleBotProcessEvent(event: BotProcessEvent) {
+    if (event.type === 'heartbeat' && event.status) {
+      this.status = event.status;
+      this.connectedPhone = event.connectedPhone || this.connectedPhone;
       return;
     }
 
-    this.status = 'active';
-    this.startTime = Date.now();
-    this.addLogInternal('INFO', 'Iniciando proceso real de Node: node chronobot.js');
+    if (event.type === 'session_conflict') {
+      this.sessionConflict = true;
+      this.status = 'disconnected';
+      this.addLogInternal(
+        'WARN',
+        `Ya hay una sesión de WhatsApp abierta${event.ownerPid ? ` (PID ${event.ownerPid})` : ''}. No se iniciará un segundo navegador.`
+      );
+      return;
+    }
 
-    try {
-      this.botProcess = spawn('node', [chronobotPath], {
-        cwd: process.cwd(),
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
+    if (event.type === 'log') {
+      if (event.message) {
+        const levelMap: Record<string, 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'> = {
+          log: 'INFO',
+          warn: 'WARN',
+          error: 'ERROR',
+          debug: 'DEBUG'
+        };
+        const time = event.emittedAt
+          ? new Date(event.emittedAt).toLocaleTimeString('es-ES', { hour12: false })
+          : undefined;
+        this.addLogInternal(levelMap[event.level || 'log'] || 'INFO', event.message, time, { details: event.details });
+      }
+      return;
+    }
 
-      this.addLogInternal('INFO', `Proceso del bot de Node.js iniciado con PID: ${this.botProcess.pid}`);
+    if (event.type === 'qr') {
+      this.currentRawQr = event.raw || '';
+      this.currentQrDataUrl = event.dataUrl || '';
+      this.qrGeneratedAt = event.generatedAt || Date.now();
+      this.qrExpiresInSeconds = event.expiresInSeconds || 20;
+      this.status = 'waiting_qr';
+      this.addLogInternal('INFO', 'Escanea el código QR de WhatsApp Web para conectar:', undefined, { isQr: true });
+      return;
+    }
 
+    if (event.type === 'status' && event.status) {
+      this.status = event.status;
+      if (event.status === 'disconnected') {
+        this.connectedPhone = '';
+        this.currentRawQr = '';
+        this.currentQrDataUrl = '';
+        this.qrGeneratedAt = 0;
+      }
+      return;
+    }
+
+    if (event.type === 'ready') {
+      this.status = 'active';
+      this.startTime = Date.now();
+      this.connectedPhone = event.connectedPhone || '';
+      this.currentRawQr = '';
+      this.currentQrDataUrl = '';
       this.events.unshift({
         id: 'ev-' + Date.now(),
         type: 'client_connected',
-        title: 'Proceso de Node iniciado',
-        subtitle: `PID: ${this.botProcess.pid}`,
+        title: 'WhatsApp conectado',
+        subtitle: this.connectedPhone || 'Sesión activa',
         relativeTime: 'Ahora mismo',
         timestamp: Date.now()
       });
+      return;
+    }
 
-      if (this.botProcess.stdout) {
-        this.botProcess.stdout.on('data', (data: Buffer) => {
-          const text = data.toString('utf-8').trim();
-          if (text) {
-            text.split('\n').forEach(line => {
-              if (line.trim()) {
-                this.addLogInternal('INFO', `[Node Output] ${line.trim()}`);
-              }
-            });
-          }
-        });
+    if (event.type === 'message_received' && event.contactName) {
+      this.events.unshift({
+        id: 'ev-' + Date.now(),
+        type: 'message_received',
+        title: 'Mensaje recibido',
+        subtitle: event.contactName,
+        relativeTime: 'Ahora mismo',
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    if (event.type === 'unauthorized') {
+      this.events.unshift({
+        id: 'ev-' + Date.now(),
+        type: 'unauthorized',
+        title: 'Número no autorizado',
+        subtitle: event.phoneNumber ? '+' + event.phoneNumber : 'Número no disponible',
+        relativeTime: 'Ahora mismo',
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    if (event.type === 'image_saved') {
+      this.loadSavedImagesFromDisk();
+      this.addLogInternal('INFO', 'Imagen guardada:', undefined, {
+        highlightPath: event.filePath,
+        highlightSender: event.contactName
+      });
+      this.events.unshift({
+        id: 'ev-' + Date.now(),
+        type: 'image_saved',
+        title: 'Imagen guardada',
+        subtitle: event.contactName || 'Contacto autorizado',
+        relativeTime: 'Ahora mismo',
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  private handleBotProcessOutput(line: string) {
+    let event: BotProcessEvent;
+    try {
+      event = JSON.parse(line) as BotProcessEvent;
+    } catch {
+      this.addLogInternal('INFO', `[Node Output] ${line.trim()}`);
+      return;
+    }
+
+    try {
+      this.handleBotProcessEvent(event);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.addLogInternal('ERROR', `Error procesando evento de WhatsApp Web: ${message}`);
+    }
+  }
+
+  private isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return !(error instanceof Error && 'code' in error && error.code === 'ESRCH');
+    }
+  }
+
+  private async isBrowserPortOpen(port: number): Promise<boolean> {
+    return new Promise(resolve => {
+      const socket = createConnection({ host: '127.0.0.1', port });
+      const finish = (isOpen: boolean) => {
+        socket.destroy();
+        resolve(isOpen);
+      };
+      socket.setTimeout(1000);
+      socket.once('connect', () => finish(true));
+      socket.once('timeout', () => finish(false));
+      socket.once('error', () => finish(false));
+    });
+  }
+
+  private getExistingBrowserPort(): number | null {
+    const activePortPath = path.join(path.resolve(process.cwd(), '.wwebjs_auth'), 'session', 'DevToolsActivePort');
+    if (!fs.existsSync(activePortPath)) return null;
+
+    try {
+      const port = Number(fs.readFileSync(activePortPath, 'utf8').split(/\r?\n/, 1)[0]);
+      return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  private isChronoBotProcess(pid: number): boolean {
+    try {
+      const commandLine = process.platform === 'win32'
+        ? execFileSync('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `$process = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if ($process) { $process.CommandLine }`
+        ], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim()
+        : fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
+      return commandLine.toLowerCase().includes(chronobotPath.toLowerCase())
+        && /(?:^|\s)node(?:\.exe)?(?:\s|$)/i.test(commandLine);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.addLogInternal('WARN', `No se pudo verificar que PID ${pid} pertenece a chronobot.js: ${message}`);
+      return false;
+    }
+  }
+
+  private async waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!this.isProcessAlive(pid)) return true;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return !this.isProcessAlive(pid);
+  }
+
+  private async closeExistingBrowser(port: number): Promise<void> {
+    if (!await this.isBrowserPortOpen(port)) return;
+
+    const browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}` });
+    await browser.close();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && await this.isBrowserPortOpen(port)) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    if (await this.isBrowserPortOpen(port)) {
+      throw new Error(`Chrome no liberó el perfil tras cerrar la sesión (puerto ${port}).`);
+    }
+  }
+
+  private async findExistingSession(): Promise<{ label: string; pid?: number; token?: string; port?: number } | null> {
+    const authDirectory = path.resolve(process.cwd(), '.wwebjs_auth');
+    const sessionLockPath = path.join(authDirectory, 'chronobot.lock');
+    const browserPort = this.getExistingBrowserPort();
+    if (fs.existsSync(sessionLockPath)) {
+      try {
+        const lock = JSON.parse(fs.readFileSync(sessionLockPath, 'utf8')) as { pid?: number; token?: string };
+        const pid = Number(lock.pid);
+        if (Number.isInteger(pid) && pid > 0 && this.isProcessAlive(pid) && this.isChronoBotProcess(pid)) {
+          return {
+            label: `cliente de ChronoBot (PID ${pid})`,
+            pid,
+            token: typeof lock.token === 'string' ? lock.token : undefined,
+            port: browserPort || undefined
+          };
+        }
+      } catch {
+        this.addLogInternal('WARN', 'No se pudo leer el bloqueo de sesión de ChronoBot; se verificará el navegador activo.');
+      }
+    }
+
+    return browserPort && await this.isBrowserPortOpen(browserPort)
+      ? { label: `navegador de WhatsApp Web (puerto ${browserPort})`, port: browserPort }
+      : null;
+  }
+
+  private async stopExistingSession(existing: { label: string; pid?: number; token?: string; port?: number }): Promise<void> {
+    this.addLogInternal('WARN', `Se cerrará la sesión existente: ${existing.label}.`);
+    const authDirectory = path.resolve(process.cwd(), '.wwebjs_auth');
+    const commandPath = path.join(authDirectory, 'chronobot-command.json');
+
+    if (existing.pid && existing.token) {
+      try {
+        fs.writeFileSync(commandPath, JSON.stringify({ action: 'stop', token: existing.token }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.addLogInternal('WARN', `No se pudo enviar el cierre controlado a ChronoBot: ${message}`);
       }
 
-      if (this.botProcess.stderr) {
-        this.botProcess.stderr.on('data', (data: Buffer) => {
+      if (await this.waitForProcessExit(existing.pid, 5000)) {
+        if (existing.port && await this.isBrowserPortOpen(existing.port)) {
+          throw new Error(`ChronoBot finalizó, pero Chrome sigue activo en el puerto ${existing.port}.`);
+        }
+        this.addLogInternal('INFO', `La sesión existente (PID ${existing.pid}) se cerró correctamente.`);
+        return;
+      }
+    }
+
+    if (existing.port) {
+      await this.closeExistingBrowser(existing.port);
+      this.addLogInternal('INFO', `Chrome liberó el perfil de WhatsApp Web (puerto ${existing.port}).`);
+    }
+
+    if (existing.pid && this.isProcessAlive(existing.pid)) {
+      if (!this.isChronoBotProcess(existing.pid)) {
+        throw new Error(`El PID ${existing.pid} no corresponde a chronobot.js; no se terminará un proceso ajeno.`);
+      }
+
+      process.kill(existing.pid, 'SIGTERM');
+      if (!await this.waitForProcessExit(existing.pid, 5000)) {
+        if (process.platform === 'win32') {
+          execFileSync('taskkill.exe', ['/PID', String(existing.pid), '/T', '/F'], {
+            encoding: 'utf8',
+            timeout: 5000,
+            windowsHide: true,
+            stdio: 'ignore'
+          });
+        } else {
+          process.kill(existing.pid, 'SIGKILL');
+        }
+        if (!await this.waitForProcessExit(existing.pid, 2000)) {
+          throw new Error(`No se pudo cerrar el proceso ChronoBot (PID ${existing.pid}).`);
+        }
+      }
+    }
+
+    if (existing.port && await this.isBrowserPortOpen(existing.port)) {
+      throw new Error(`La sesión de WhatsApp Web sigue activa en el puerto ${existing.port}.`);
+    }
+
+    try {
+      const pendingCommand = JSON.parse(fs.readFileSync(commandPath, 'utf8')) as { token?: string };
+      if (pendingCommand.token === existing.token) fs.unlinkSync(commandPath);
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    }
+  }
+
+  private syncExternalRuntime(): boolean {
+    if (this.botProcess) return false;
+
+    const authDirectory = path.resolve(process.cwd(), '.wwebjs_auth');
+    const lockPath = path.join(authDirectory, 'chronobot.lock');
+    const statusPath = path.join(authDirectory, 'chronobot-runtime.json');
+    const logPath = path.join(authDirectory, 'chronobot-runtime.jsonl');
+    let lock: { pid?: number; token?: string };
+    let runtime: RuntimeStatusFile;
+
+    try {
+      lock = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as { pid?: number; token?: string };
+      runtime = JSON.parse(fs.readFileSync(statusPath, 'utf8')) as RuntimeStatusFile;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        if (this.externalSession) {
+          this.externalSession = null;
+          this.status = 'stopped';
+          this.sessionConflict = false;
+          this.connectedPhone = '';
+          this.addLogInternal('WARN', 'El proceso externo de ChronoBot finalizó.');
+        }
+        return false;
+      }
+      this.addLogInternal('WARN', 'No se pudo leer el estado compartido de la sesión de ChronoBot.');
+      return false;
+    }
+
+    const pid = Number(lock.pid);
+    const isFresh = Number.isFinite(runtime.updatedAt) && Date.now() - runtime.updatedAt <= 15_000;
+    const validStatus = ['active', 'stopped', 'restarting', 'connecting', 'waiting_qr', 'disconnected'].includes(runtime.status);
+    if (
+      !Number.isInteger(pid) ||
+      pid <= 0 ||
+      !this.isProcessAlive(pid) ||
+      runtime.pid !== pid ||
+      !lock.token ||
+      runtime.token !== lock.token ||
+      !isFresh ||
+      !validStatus ||
+      runtime.status === 'stopped'
+    ) {
+      if (this.externalSession) {
+        this.externalSession = null;
+        this.status = 'disconnected';
+        this.sessionConflict = true;
+        this.connectedPhone = '';
+        this.addLogInternal('WARN', 'Se perdió la señal de actividad del proceso de ChronoBot; no se abrirá otro navegador.');
+      }
+      return false;
+    }
+
+    this.externalSession = { pid, token: lock.token };
+    this.sessionConflict = false;
+    this.status = runtime.status;
+    this.connectedPhone = runtime.connectedPhone || '';
+    this.currentRawQr = runtime.qrData?.raw || '';
+    this.currentQrDataUrl = runtime.qrData?.dataUrl || '';
+    this.qrGeneratedAt = runtime.qrData?.generatedAt || 0;
+    this.qrExpiresInSeconds = runtime.qrData?.expiresInSeconds || 20;
+    this.startTime = runtime.startedAt;
+
+    try {
+      const entries = fs.readFileSync(logPath, 'utf8').split(/\r?\n/).filter(Boolean).slice(-500);
+      for (const line of entries) {
+        let envelope: RuntimeLogEnvelope;
+        try {
+          envelope = JSON.parse(line) as RuntimeLogEnvelope;
+        } catch {
+          continue;
+        }
+        if (!envelope.id || !envelope.event || this.processedExternalEventIds.has(envelope.id)) continue;
+        this.processedExternalEventIds.add(envelope.id);
+        this.handleBotProcessEvent({ ...envelope.event, emittedAt: envelope.emittedAt });
+      }
+      if (this.processedExternalEventIds.size > 1000) {
+        const recentIds = [...this.processedExternalEventIds].slice(-500);
+        this.processedExternalEventIds.clear();
+        recentIds.forEach(id => this.processedExternalEventIds.add(id));
+      }
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.addLogInternal('WARN', `No se pudieron leer los logs compartidos de ChronoBot: ${message}`);
+      }
+    }
+
+    this.status = runtime.status;
+    this.connectedPhone = runtime.connectedPhone || '';
+    this.currentRawQr = runtime.qrData?.raw || '';
+    this.currentQrDataUrl = runtime.qrData?.dataUrl || '';
+    this.qrGeneratedAt = runtime.qrData?.generatedAt || 0;
+    this.qrExpiresInSeconds = runtime.qrData?.expiresInSeconds || 20;
+    return true;
+  }
+
+  public async startBotProcess(): Promise<boolean> {
+    if (this.startPromise) return this.startPromise;
+
+    this.startPromise = this.startBotProcessOnce();
+    try {
+      return await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  private async startBotProcessOnce(): Promise<boolean> {
+    if (this.botProcess) {
+      this.addLogInternal('WARN', 'El proceso del bot ya se encuentra en ejecución.');
+      return true;
+    }
+
+    try {
+      const existingSession = await this.findExistingSession();
+      if (existingSession) {
+        this.sessionConflict = false;
+        await this.stopExistingSession(existingSession);
+        const remainingSession = await this.findExistingSession();
+        if (remainingSession) {
+          throw new Error(`No se pudo liberar la sesión existente: ${remainingSession.label}.`);
+        }
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.status = 'stopped';
+      this.addLogInternal('ERROR', `No se pudo verificar si WhatsApp Web ya está abierto: ${message}`);
+      return false;
+    }
+
+    this.sessionConflict = false;
+    this.status = 'connecting';
+    this.startTime = Date.now();
+    this.currentRawQr = '';
+    this.currentQrDataUrl = '';
+    this.qrGeneratedAt = 0;
+    this.addLogInternal('INFO', 'Iniciando cliente real de WhatsApp Web...');
+
+    try {
+      const botProcess = spawn('node', [chronobotPath], {
+        cwd: process.cwd(),
+        env: { ...process.env, CHRONOBOT_EMBEDDED: '1' },
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      this.botProcess = botProcess;
+
+      this.addLogInternal('INFO', `Proceso de WhatsApp Web iniciado con PID: ${botProcess.pid}`);
+      let outputBuffer = '';
+      const outputDecoder = new StringDecoder('utf8');
+      botProcess.stdout?.on('data', (data: Buffer) => {
+        outputBuffer += outputDecoder.write(data);
+        const lines = outputBuffer.split(/\r?\n/);
+        outputBuffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          this.handleBotProcessOutput(line);
+        }
+      });
+
+      botProcess.stderr?.on('data', (data: Buffer) => {
           const text = data.toString('utf-8').trim();
           if (text) {
             text.split('\n').forEach(line => {
@@ -327,54 +801,111 @@ export class ChronoBotEngine {
               }
             });
           }
-        });
-      }
+      });
 
-      this.botProcess.on('exit', (code, signal) => {
+      botProcess.on('exit', (code, signal) => {
+        outputBuffer += outputDecoder.end();
+        if (outputBuffer.trim()) {
+          this.handleBotProcessOutput(outputBuffer);
+        }
         this.addLogInternal('WARN', `El proceso de Node del bot finalizó. Código: ${code}, Señal: ${signal}`);
-        this.botProcess = null;
-        this.status = 'stopped';
+        if (this.botProcess === botProcess) {
+          this.botProcess = null;
+          if (this.status !== 'disconnected') this.status = 'stopped';
+          this.currentRawQr = '';
+          this.currentQrDataUrl = '';
+          this.qrGeneratedAt = 0;
+          this.connectedPhone = '';
+        }
       });
 
-      this.botProcess.on('error', (err) => {
+      botProcess.on('error', (err) => {
         this.addLogInternal('ERROR', `Error en el proceso de Node: ${err.message}`);
-        this.botProcess = null;
-        this.status = 'stopped';
+        if (this.botProcess === botProcess) {
+          this.botProcess = null;
+          this.status = 'stopped';
+        }
       });
 
+      return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.addLogInternal('ERROR', `Error al arrancar chronobot.js: ${msg}`);
+      this.addLogInternal('ERROR', `Error al iniciar el cliente de WhatsApp: ${msg}`);
       this.botProcess = null;
       this.status = 'stopped';
+      return false;
     }
   }
 
-  public async stopBotProcess() {
-    if (!this.botProcess) {
+  public async stopBotProcess(logout = false) {
+    const botProcess = this.botProcess;
+    if (!botProcess) {
+      if (this.syncExternalRuntime() && this.externalSession) {
+        const external = this.externalSession;
+        const commandPath = path.join(path.resolve(process.cwd(), '.wwebjs_auth'), 'chronobot-command.json');
+        this.addLogInternal('INFO', `${logout ? 'Cerrando sesión' : 'Deteniendo'} ChronoBot externo (PID: ${external.pid})...`);
+        fs.writeFileSync(commandPath, JSON.stringify({
+          action: logout ? 'logout' : 'stop',
+          token: external.token
+        }));
+
+        const deadline = Date.now() + 8000;
+        while (Date.now() < deadline && this.isProcessAlive(external.pid)) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        if (this.isProcessAlive(external.pid)) {
+          try {
+            const pendingCommand = JSON.parse(fs.readFileSync(commandPath, 'utf8')) as { token?: string };
+            if (pendingCommand.token === external.token) fs.unlinkSync(commandPath);
+          } catch (error) {
+            if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+          }
+          throw new Error(`ChronoBot (PID ${external.pid}) no confirmó el apagado en 8 segundos.`);
+        }
+
+        this.externalSession = null;
+        this.status = 'stopped';
+        this.connectedPhone = '';
+        this.currentRawQr = '';
+        this.currentQrDataUrl = '';
+        this.qrGeneratedAt = 0;
+        this.addLogInternal('INFO', 'ChronoBot externo detenido.');
+        return;
+      }
       this.status = 'stopped';
+      this.currentRawQr = '';
+      this.currentQrDataUrl = '';
+      this.qrGeneratedAt = 0;
+      this.connectedPhone = '';
       this.addLogInternal('WARN', 'El proceso del bot no estaba en ejecución.');
       return;
     }
 
-    this.addLogInternal('INFO', `Deteniendo proceso de Node (PID: ${this.botProcess.pid})...`);
-    try {
-      this.botProcess.kill('SIGTERM');
-      setTimeout(() => {
-        if (this.botProcess) {
-          this.botProcess.kill('SIGKILL');
-        }
-      }, 2000);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.addLogInternal('ERROR', `Error deteniendo el proceso: ${msg}`);
-    } finally {
-      this.botProcess = null;
-      this.status = 'stopped';
-    }
+    this.addLogInternal('INFO', `${logout ? 'Cerrando sesión' : 'Deteniendo'} proceso de WhatsApp Web (PID: ${botProcess.pid})...`);
+    this.status = 'stopped';
+    botProcess.stdin?.write(`{"action":"${logout ? 'logout' : 'stop'}"}\n`);
+
+    await new Promise<void>(resolve => {
+      const forceKillTimer = setTimeout(() => {
+        if (botProcess.exitCode === null) botProcess.kill('SIGKILL');
+      }, 5000);
+      const finalTimer = setTimeout(resolve, 7000);
+      botProcess.once('exit', () => {
+        clearTimeout(forceKillTimer);
+        clearTimeout(finalTimer);
+        resolve();
+      });
+    });
+
+    if (this.botProcess === botProcess) this.botProcess = null;
+    this.status = 'stopped';
+    this.currentRawQr = '';
+    this.currentQrDataUrl = '';
+    this.qrGeneratedAt = 0;
+    this.connectedPhone = '';
   }
 
-  public async handleMessage(payload: { from: string; body?: string; hasMedia?: boolean; type?: string; author?: string }) {
+  private async handleMessage(payload: { from: string; body?: string; hasMedia?: boolean; type?: string; author?: string }) {
     if (this.status !== 'active') {
       this.log('warn', 'Bot apagado. No se pueden recibir ni procesar mensajes.');
       return { handled: false, reason: 'bot_stopped' };
@@ -482,95 +1013,23 @@ export class ChronoBotEngine {
     return { handled: true, contactName, hasMedia: true, filePath: relativePath, fileName };
   }
 
-  public pollHeartbeat() {
-    if (this.status !== 'active') return;
-    const msgs = [
-      'Heartbeat de conexión activo · ChronoBot socket verificado',
-      'Sincronización completada · 0 mensajes pendientes',
-      'Socket de WhatsApp en estado READY',
-      'Canal de escucha activo'
-    ];
-    const msg = msgs[Math.floor(Math.random() * msgs.length)];
-    this.addLogInternal('INFO', msg);
-  }
-
-  public async generateQrCode(): Promise<string> {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let rand1 = '';
-    let rand2 = '';
-    for (let i = 0; i < 24; i++) rand1 += chars.charAt(Math.floor(Math.random() * chars.length));
-    for (let i = 0; i < 32; i++) rand2 += chars.charAt(Math.floor(Math.random() * chars.length));
-
-    this.currentRawQr = `2@${rand1}==,${rand2}=,${Date.now()}==`;
-    this.qrGeneratedAt = Date.now();
-
-    try {
-      this.currentQrDataUrl = await QRCode.toDataURL(this.currentRawQr, {
-        width: 340,
-        margin: 2,
-        color: {
-          dark: '#031c13',
-          light: '#ffffff'
-        }
-      });
-    } catch {
-      this.currentQrDataUrl = '';
-    }
-    return this.currentQrDataUrl;
-  }
-
-  public setStatus(newStatus: 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected') {
-    if (newStatus === 'active') {
-      void this.startBotProcess();
-    } else if (newStatus === 'stopped' || newStatus === 'disconnected') {
-      void this.stopBotProcess();
-    } else {
-      this.status = newStatus;
-    }
-  }
-
-  public async simulateQrScan(simulatedPhone = '') {
-    const phoneToConnect = simulatedPhone || '+52 1 55 1123 4567';
-    this.connectedPhone = phoneToConnect;
-    this.status = 'active';
-    this.startTime = Date.now();
-
-    this.addLogInternal('INFO', `[QR Escaneado] Dispositivo móvil vinculado: ${phoneToConnect}`);
-    this.addLogInternal('INFO', 'Autenticación correcta. Cliente conectado y listo.');
-
-    this.events.unshift({
-      id: 'ev-' + Date.now(),
-      type: 'client_connected',
-      title: 'Cliente conectado',
-      subtitle: `WhatsApp (${phoneToConnect})`,
-      relativeTime: 'Ahora mismo',
-      timestamp: Date.now()
-    });
-
-    return {
-      success: true,
-      status: this.status,
-      connectedPhone: this.connectedPhone
-    };
-  }
-
   public async regenerateQr() {
-    await this.generateQrCode();
-    this.status = 'waiting_qr';
-    this.addLogInternal('INFO', 'Código QR actualizado. Escanea con WhatsApp para iniciar sesión:');
-    this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
-    return {
-      raw: this.currentRawQr,
-      dataUrl: this.currentQrDataUrl,
-      generatedAt: this.qrGeneratedAt,
-      expiresInSeconds: this.qrExpiresInSeconds
-    };
+    await this.restartBotProcess();
+    return this.getQrData();
+  }
+
+  public async restartBotProcess() {
+    this.status = 'restarting';
+    if (this.botProcess) await this.stopBotProcess();
+    else if (this.syncExternalRuntime() && this.externalSession) await this.stopBotProcess();
+    await this.startBotProcess();
   }
 
   public async disconnectWhatsApp() {
-    await this.stopBotProcess();
+    await this.stopBotProcess(true);
     this.connectedPhone = '';
-    await this.generateQrCode();
+    this.currentRawQr = '';
+    this.currentQrDataUrl = '';
     this.addLogInternal('WARN', 'Sesión de WhatsApp desconectada. Bot en estado APAGADO.');
     return {
       status: this.status,
@@ -595,6 +1054,7 @@ export class ChronoBotEngine {
   }
 
   public getStatus() {
+    this.syncExternalRuntime();
     const uptimeSec = this.status === 'active' ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
     const hours = Math.floor(uptimeSec / 3600);
     const minutes = Math.floor((uptimeSec % 3600) / 60);
@@ -607,15 +1067,18 @@ export class ChronoBotEngine {
       savedImagesCount: this.savedImages.length,
       allowedNumbers: this.allowedNumbers,
       qrData: this.getQrData(),
-      pid: this.botProcess?.pid
+      pid: this.botProcess?.pid || this.externalSession?.pid,
+      sessionConflict: this.sessionConflict
     };
   }
 
   public getLogs(limit = 100) {
+    this.syncExternalRuntime();
     return this.logs.slice(-limit);
   }
 
   public getEvents(limit = 20) {
+    this.syncExternalRuntime();
     return this.events.slice(0, limit);
   }
 

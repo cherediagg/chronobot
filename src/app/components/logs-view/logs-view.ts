@@ -54,14 +54,6 @@ import { BotService } from '../../services/bot.service';
             <span>Exportar .txt</span>
           </button>
 
-          <button
-            type="button"
-            (click)="triggerSimulatedEvent('photo')"
-            class="px-4 py-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 text-slate-200 text-xs font-bold flex items-center gap-2 transition-all active:scale-95"
-          >
-            <mat-icon class="text-base">add_photo_alternate</mat-icon>
-            <span>Simular imagen entrante</span>
-          </button>
         </div>
       </div>
 
@@ -237,15 +229,10 @@ import { BotService } from '../../services/bot.service';
                       @if (botService.qrData().dataUrl) {
                         <img [src]="botService.qrData().dataUrl" alt="Código QR en vivo" class="w-40 h-40 sm:w-44 sm:h-44 object-contain select-none" />
                       } @else {
-                        <div class="w-40 h-40 sm:w-44 sm:h-44 flex items-center justify-center bg-slate-900 text-emerald-400">
-                          <mat-icon class="text-3xl animate-spin">sync</mat-icon>
+                        <div class="w-40 h-40 sm:w-44 sm:h-44 flex items-center justify-center bg-slate-900 text-center text-xs text-slate-300 p-4">
+                          {{ botService.status() === 'active' ? 'WhatsApp está conectado.' : 'Esperando el código QR real de WhatsApp Web...' }}
                         </div>
                       }
-                      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div class="w-8 h-8 rounded-xl bg-[#25D366] text-white flex items-center justify-center shadow-md border-2 border-white">
-                          <mat-icon class="text-base">chat</mat-icon>
-                        </div>
-                      </div>
                     </div>
 
                     <!-- Terminal Info + Actions -->
@@ -255,9 +242,6 @@ import { BotService } from '../../services/bot.service';
                           <mat-icon class="text-sm">qr_code_scanner</mat-icon>
                           Código QR de WhatsApp Web (whatsapp-web.js)
                         </span>
-                        <span class="text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg">
-                          Expira en {{ botService.qrSecondsLeft() }}s
-                        </span>
                       </div>
 
                       <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
@@ -265,15 +249,6 @@ import { BotService } from '../../services/bot.service';
                       </p>
 
                       <div class="flex items-center gap-2.5 flex-wrap pt-1 font-sans">
-                        <button
-                          type="button"
-                          (click)="botService.simulateQrScan()"
-                          class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-                        >
-                          <mat-icon class="text-sm">phonelink_setup</mat-icon>
-                          <span>Simular escaneo exitoso</span>
-                        </button>
-
                         <button
                           type="button"
                           (click)="botService.regenerateQr()"
@@ -311,29 +286,12 @@ import { BotService } from '../../services/bot.service';
         }
       </div>
 
-      <!-- Quick Interactive Simulation Pod -->
       <div class="p-5 rounded-3xl bg-gradient-to-b from-white/[0.04] to-black/30 backdrop-blur-3xl border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
         <span class="flex items-center gap-2.5">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          Terminal enlazada a la instancia de Node.js v22.14.0 (Cadencia de muestreo: {{ refreshIntervalSeconds() }}s)
+          <span class="w-2.5 h-2.5 rounded-full" [class]="botService.status() === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"></span>
+          Eventos y mensajes recibidos directamente desde WhatsApp Web (actualización cada {{ refreshIntervalSeconds() }}s)
         </span>
-        <div class="flex items-center gap-3">
-          <button
-            type="button"
-            (click)="triggerSimulatedEvent('unauthorized')"
-            class="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-medium transition-all"
-          >
-            Simular no autorizado
-          </button>
-          <span>·</span>
-          <button
-            type="button"
-            (click)="triggerSimulatedEvent('message')"
-            class="px-3 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 font-medium transition-all"
-          >
-            Simular texto entrante
-          </button>
-        </div>
+        <span class="text-slate-500">Las pruebas requieren enviar un mensaje real al número vinculado.</span>
       </div>
     </div>
   `
@@ -465,13 +423,4 @@ export class LogsView {
     URL.revokeObjectURL(url);
   }
 
-  triggerSimulatedEvent(type: 'photo' | 'message' | 'unauthorized') {
-    if (type === 'photo') {
-      this.botService.sendTestMessage('Por favor guarda esta foto del viaje');
-    } else if (type === 'message') {
-      this.botService.sendTestMessage('Hola bot, ¿qué comandos están disponibles?');
-    } else if (type === 'unauthorized') {
-      this.botService.sendTestMessage('Hola, soy un número desconocido', '+5215599008877');
-    }
-  }
 }

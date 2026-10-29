@@ -26,15 +26,6 @@ import { SavedImage } from '../../models/bot.model';
           </p>
         </div>
 
-        <!-- Action Button -->
-        <button
-          type="button"
-          (click)="simulateReceivePhoto()"
-          class="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-[0_0_30px_rgba(168,85,247,0.35)] active:scale-95 shrink-0"
-        >
-          <mat-icon class="text-base">add_photo_alternate</mat-icon>
-          <span>Simular descarga de foto</span>
-        </button>
       </div>
 
       <!-- Fluid Telemetry Wave (Zero Box Borders) -->
@@ -289,7 +280,4 @@ export class ImagesView {
     this.botService.deleteImage(id);
   }
 
-  simulateReceivePhoto() {
-    this.botService.sendTestMessage('Enviar fotografía de inspección');
-  }
 }

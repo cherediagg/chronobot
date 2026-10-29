@@ -77,23 +77,19 @@ import { BotService } from '../../services/bot.service';
                   class="w-full h-full object-contain select-none"
                 />
               } @else {
-                <!-- High-contrast fallback visual SVG pattern -->
                 <div class="w-full h-full flex flex-col items-center justify-center bg-slate-950 rounded-xl p-4 text-center">
-                  <mat-icon class="text-5xl text-emerald-400 animate-spin mb-2">sync</mat-icon>
-                  <span class="text-xs text-slate-300 font-mono">Generando token QR...</span>
+                  @if (botService.status() === 'stopped' || botService.status() === 'disconnected') {
+                    <mat-icon class="text-4xl text-rose-300 mb-2">cloud_off</mat-icon>
+                    <span class="text-xs text-slate-300">
+                      {{ connectionError() || 'WhatsApp Web no está conectado. El cliente se iniciará automáticamente.' }}
+                    </span>
+                  } @else {
+                    <mat-icon class="text-4xl text-emerald-400 animate-spin mb-2">sync</mat-icon>
+                    <span class="text-xs text-slate-300">
+                      {{ botService.status() === 'waiting_qr' ? 'Esperando el QR real de WhatsApp Web...' : 'Conectando con WhatsApp Web; el QR aparecerá cuando WhatsApp lo envíe.' }}
+                    </span>
+                  }
                 </div>
-              }
-
-              <!-- Centered WhatsApp Badge floating over QR -->
-              <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div class="w-12 h-12 rounded-2xl bg-[#25D366] text-white flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.4)] border-2 border-white">
-                  <mat-icon class="text-2xl">chat</mat-icon>
-                </div>
-              </div>
-
-              <!-- Animated Laser Scanner Beam (when waiting for scan) -->
-              @if (botService.status() !== 'active') {
-                <div class="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_rgba(52,211,153,1)] animate-bounce pointer-events-none opacity-80"></div>
               }
 
               <!-- Connected Overlay if already active -->
@@ -110,22 +106,12 @@ import { BotService } from '../../services/bot.service';
             </div>
           </div>
 
-          <!-- Countdown & Expiration Indicator -->
+          <!-- Connection status -->
           <div class="w-full max-w-[260px] mt-4 space-y-1.5 text-center">
             @if (botService.status() !== 'active') {
-              <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
-                <span class="flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-                  Expira en:
-                </span>
-                <span class="text-emerald-300 font-bold tabular-nums">{{ botService.qrSecondsLeft() }} segundos</span>
-              </div>
-              <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div 
-                  class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-1000 rounded-full"
-                  [style.width.%]="(botService.qrSecondsLeft() / 25) * 100"
-                ></div>
-              </div>
+              <span class="text-xs text-slate-400">
+                {{ botService.qrData().dataUrl ? 'QR de WhatsApp Web listo para escanear.' : 'Esperando el QR de WhatsApp Web.' }}
+              </span>
             } @else {
               <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
                 <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -176,18 +162,8 @@ import { BotService } from '../../services/bot.service';
             </li>
           </ol>
 
-          <!-- Interactive Action Buttons -->
           <div class="pt-2 flex flex-wrap items-center gap-3">
             @if (botService.status() !== 'active') {
-              <button
-                type="button"
-                (click)="botService.startBot()"
-                class="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 text-xs font-extrabold flex items-center gap-2.5 shadow-[0_0_25px_rgba(16,185,129,0.35)] transition-all active:scale-95 cursor-pointer"
-              >
-                <mat-icon class="text-lg">power_settings_new</mat-icon>
-                <span>Activar Bot y Conectar</span>
-              </button>
-
               <button
                 type="button"
                 (click)="botService.regenerateQr()"
@@ -211,20 +187,6 @@ import { BotService } from '../../services/bot.service';
 
       </div>
 
-      <!-- Bottom Status Bar -->
-      <div class="relative z-10 pt-4 mt-2 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-400">
-        <div class="flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full" [class]="botService.status() === 'active' ? 'bg-emerald-400' : 'bg-rose-400'"></span>
-          <span>
-            @if (botService.status() === 'active') {
-              ChronoBot activo y listo
-            } @else {
-              ChronoBot inactivo · Escanea el código QR para iniciar
-            }
-          </span>
-        </div>
-        <span class="text-slate-500 font-mono">ChronoBot WhatsApp Engine</span>
-      </div>
     </div>
   `
 })
@@ -234,6 +196,10 @@ export class WhatsappQr {
   readonly mode = input<'card' | 'modal'>('card');
   readonly canClose = input<boolean>(false);
   readonly dismiss = output<void>();
+  readonly connectionError = computed(() => this.botService.logs()
+    .slice()
+    .reverse()
+    .find(log => log.level === 'ERROR' || log.text.includes('Ya existe una sesión abierta'))?.text || '');
 
   readonly qrImageSrc = computed(() => {
     return this.botService.qrData().dataUrl;
