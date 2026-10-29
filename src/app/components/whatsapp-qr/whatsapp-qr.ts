@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { BotService } from '../../services/bot.service';
 
@@ -8,10 +8,7 @@ import { BotService } from '../../services/bot.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div 
-      class="relative rounded-3xl overflow-hidden transition-all duration-500 backdrop-blur-3xl border border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.6)]"
-      [class]="mode() === 'card' 
-        ? 'p-6 sm:p-8 bg-gradient-to-b from-white/[0.06] via-white/[0.02] to-black/60' 
-        : 'p-8 sm:p-10 bg-gradient-to-b from-[#091512]/95 via-[#060c0f]/95 to-black/95'"
+      class="relative rounded-3xl overflow-hidden transition-all duration-500 backdrop-blur-3xl border border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.6)] p-6 sm:p-8 bg-gradient-to-b from-white/[0.06] via-white/[0.02] to-black/60"
     >
       <!-- Volumetric Ambient Auroras behind QR -->
       <div class="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-emerald-500/15 blur-[90px] pointer-events-none"></div>
@@ -41,16 +38,6 @@ import { BotService } from '../../services/bot.service';
           </div>
         </div>
 
-        @if (canClose()) {
-          <button
-            type="button"
-            (click)="dismiss.emit()"
-            class="self-end sm:self-auto w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-all active:scale-95 border border-white/5"
-            title="Cerrar panel de vinculación"
-          >
-            <mat-icon class="text-lg">close</mat-icon>
-          </button>
-        }
       </div>
 
       <!-- Main Body: QR Graphic + Guided Instructions -->
@@ -193,9 +180,6 @@ import { BotService } from '../../services/bot.service';
 export class WhatsappQr {
   readonly botService = inject(BotService);
 
-  readonly mode = input<'card' | 'modal'>('card');
-  readonly canClose = input<boolean>(false);
-  readonly dismiss = output<void>();
   readonly connectionError = computed(() => this.botService.logs()
     .slice()
     .reverse()

@@ -112,31 +112,4 @@
     </main>
   </div>
 
-  <!-- Global QR Pairing Modal -->
-  @if (botService.showQrModal()) {
-    <div 
-      class="fixed inset-0 z-50 bg-black/80 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-6"
-      role="dialog"
-      tabindex="-1"
-      aria-modal="true"
-      aria-label="Modal para vincular WhatsApp Web"
-      (click)="botService.closeQrModal()"
-      (keydown.escape)="botService.closeQrModal()"
-    >
-      <div 
-        class="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl"
-        role="region"
-        tabindex="0"
-        aria-label="Contenido del código QR"
-        (click)="$event.stopPropagation()"
-        (keydown)="$event.stopPropagation()"
-      >
-        <app-whatsapp-qr 
-          mode="modal" 
-          [canClose]="true" 
-          (dismiss)="botService.closeQrModal()" 
-        />
-      </div>
-    </div>
-  }
 </div>

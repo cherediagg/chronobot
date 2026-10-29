@@ -19,7 +19,6 @@ export class BotService {
     expiresInSeconds: 20,
     connectedPhone: ''
   });
-  readonly showQrModal = signal<boolean>(false);
   readonly isWhatsAppConnected = computed(() => this.status() === 'active');
 
   // Persistent Employees File Metadata
@@ -263,18 +262,13 @@ export class BotService {
     this.logs.set(formatted);
   }
 
-  private applyBackendEmployees(employees: { id: string; nombre?: string; name?: string; telefono?: string; phone?: string; rol?: string; role?: string; activo?: boolean; authorized?: boolean; avatarUrl?: string; notes?: string; messagesReceived?: number; imagesReceived?: number; lastActive?: string }[]) {
+  private applyBackendEmployees(employees: { id: string; nombre?: string; name?: string; telefono?: string; phone?: string; activo?: boolean; authorized?: boolean; notes?: string }[]) {
     const mapped: Contact[] = employees.map(emp => ({
       id: emp.id,
       name: emp.nombre || emp.name || 'Sin nombre',
       phone: emp.telefono || emp.phone || '',
-      role: (emp.rol || emp.role || 'Contacto Autorizado') as Contact['role'],
       authorized: emp.activo !== undefined ? Boolean(emp.activo) : (emp.authorized !== undefined ? Boolean(emp.authorized) : true),
-      avatarUrl: emp.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      messagesReceived: typeof emp.messagesReceived === 'number' ? emp.messagesReceived : 0,
-      imagesReceived: typeof emp.imagesReceived === 'number' ? emp.imagesReceived : 0,
-      lastActive: emp.lastActive || 'Reciente',
-      notes: emp.notes !== undefined ? emp.notes : 'Sincronizado desde data/employees.json'
+      notes: emp.notes || ''
     }));
 
     this.contacts.set(mapped);
@@ -411,14 +405,6 @@ export class BotService {
     }
   }
 
-  openQrModal() {
-    this.showQrModal.set(true);
-  }
-
-  closeQrModal() {
-    this.showQrModal.set(false);
-  }
-
   // Logs management
   addLog(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', text: string, options?: { isQr?: boolean; highlightPath?: string; highlightSender?: string }) {
     const newEntry: LogEntry = {
@@ -467,7 +453,7 @@ export class BotService {
   }
 
   // Contact operations
-  async addContact(contact: Omit<Contact, 'id' | 'messagesReceived' | 'imagesReceived' | 'lastActive'>) {
+  async addContact(contact: Omit<Contact, 'id'>) {
     try {
       const res = await fetch('/api/bot/contacts', {
         method: 'POST',
@@ -475,9 +461,7 @@ export class BotService {
         body: JSON.stringify({
           nombre: contact.name,
           telefono: contact.phone,
-          rol: contact.role,
-          activo: contact.authorized,
-          avatarUrl: contact.avatarUrl
+          activo: contact.authorized
         })
       });
       if (res.ok) {
@@ -500,8 +484,6 @@ export class BotService {
           name: contact.name,
           telefono: contact.phone,
           phone: contact.phone,
-          rol: contact.role,
-          role: contact.role,
           activo: contact.authorized,
           authorized: contact.authorized,
           notes: contact.notes

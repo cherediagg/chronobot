@@ -51,12 +51,7 @@ export interface Contact {
   id: string;
   name: string;
   phone: string;
-  role: 'Admin' | 'Contacto Autorizado' | 'Usuario Estándar';
   authorized: boolean;
-  avatarUrl?: string;
-  messagesReceived: number;
-  imagesReceived: number;
-  lastActive: string;
   notes?: string;
 }
 

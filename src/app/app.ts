@@ -6,7 +6,6 @@ import { LogsView } from './components/logs-view/logs-view';
 import { ImagesView } from './components/images-view/images-view';
 import { ContactsView } from './components/contacts-view/contacts-view';
 import { SettingsView } from './components/settings-view/settings-view';
-import { WhatsappQr } from './components/whatsapp-qr/whatsapp-qr';
 import { BotService } from './services/bot.service';
 
 @Component({
@@ -18,8 +17,7 @@ import { BotService } from './services/bot.service';
     LogsView,
     ImagesView,
     ContactsView,
-    SettingsView,
-    WhatsappQr
+    SettingsView
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app.html',

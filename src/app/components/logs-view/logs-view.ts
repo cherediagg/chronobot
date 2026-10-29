@@ -12,11 +12,6 @@ import { BotService } from '../../services/bot.service';
       <!-- Header with Gradient Title -->
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">
         <div class="space-y-1.5">
-          <div class="flex items-center gap-2 text-slate-400 text-xs">
-            <button type="button" (click)="botService.activeScreen.set('inicio')" class="hover:text-emerald-300 transition-colors">Inicio</button>
-            <span>/</span>
-            <span class="text-emerald-400 font-medium">Logs en vivo</span>
-          </div>
           <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-400">
             Consola y Stream de Red
           </h1>
@@ -27,15 +22,6 @@ import { BotService } from '../../services/bot.service';
 
         <!-- Action Controls -->
         <div class="flex items-center gap-3 flex-wrap">
-          <button
-            type="button"
-            (click)="botService.openQrModal()"
-            class="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(16,185,129,0.25)] active:scale-95 cursor-pointer"
-          >
-            <mat-icon class="text-base">qr_code_scanner</mat-icon>
-            <span>{{ botService.status() === 'active' ? 'Ver Código QR' : 'Escanear QR' }}</span>
-          </button>
-
           <button
             type="button"
             (click)="botService.clearLogs()"
@@ -258,14 +244,6 @@ import { BotService } from '../../services/bot.service';
                           <span>Regenerar QR</span>
                         </button>
 
-                        <button
-                          type="button"
-                          (click)="botService.openQrModal()"
-                          class="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-emerald-400 text-xs font-medium flex items-center gap-1.5 active:scale-95 cursor-pointer"
-                        >
-                          <mat-icon class="text-sm">open_in_full</mat-icon>
-                          <span>Ver en grande</span>
-                        </button>
                       </div>
                     </div>
                   </div>

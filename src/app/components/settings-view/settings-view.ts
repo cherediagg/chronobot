@@ -12,11 +12,6 @@ import { BotService } from '../../services/bot.service';
       <!-- Header with Gradient Title -->
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">
         <div class="space-y-1.5">
-          <div class="flex items-center gap-2 text-slate-400 text-xs">
-            <button type="button" (click)="botService.activeScreen.set('inicio')" class="hover:text-emerald-300 transition-colors">Inicio</button>
-            <span>/</span>
-            <span class="text-emerald-400 font-medium">Configuración</span>
-          </div>
           <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-400">
             Ajustes del Motor y Red
           </h1>

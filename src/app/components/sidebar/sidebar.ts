@@ -85,25 +85,6 @@ import { BotService } from '../../services/bot.service';
           </button>
         </nav>
 
-        <!-- QR Quick Action Button -->
-        <div class="px-4 pt-2">
-          <button
-            type="button"
-            (click)="botService.openQrModal()"
-            class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
-            [class]="botService.status() === 'active' 
-              ? 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-slate-300' 
-              : 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse'"
-          >
-            <div class="flex items-center gap-2.5">
-              <mat-icon class="text-base">qr_code_scanner</mat-icon>
-              <span>{{ botService.status() === 'active' ? 'Código QR' : 'Vincular WhatsApp' }}</span>
-            </div>
-            @if (botService.status() !== 'active') {
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            }
-          </button>
-        </div>
       </div>
 
       <!-- Bottom Status & Version with Soft Light -->

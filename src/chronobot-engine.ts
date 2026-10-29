@@ -33,13 +33,7 @@ export interface ChronoEmployee {
   phone?: string;
   activo: boolean;
   authorized?: boolean;
-  rol: string;
-  role?: string;
-  avatarUrl?: string;
   notes?: string;
-  messagesReceived?: number;
-  imagesReceived?: number;
-  lastActive?: string;
   updatedAt?: string;
 }
 
@@ -172,7 +166,6 @@ export class ChronoBotEngine {
           const nombre = e.nombre || e.name || `Empleado ${idx + 1}`;
           const telefono = e.telefono || e.phone || '';
           const activo = e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true);
-          const rol = e.rol || e.role || 'Contacto Autorizado';
           return {
             id: e.id || `emp-${idx + 1}`,
             nombre,
@@ -181,13 +174,7 @@ export class ChronoBotEngine {
             phone: telefono,
             activo,
             authorized: activo,
-            rol,
-            role: rol,
-            avatarUrl: e.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
             notes: e.notes || '',
-            messagesReceived: typeof e.messagesReceived === 'number' ? e.messagesReceived : 0,
-            imagesReceived: typeof e.imagesReceived === 'number' ? e.imagesReceived : 0,
-            lastActive: e.lastActive || 'Reciente',
             updatedAt: e.updatedAt || new Date().toISOString()
           };
         });

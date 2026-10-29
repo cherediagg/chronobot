@@ -11,13 +11,7 @@ export interface ChronoEmployee {
   phone?: string;
   activo: boolean;
   authorized?: boolean;
-  rol: string;
-  role?: string;
-  avatarUrl?: string;
   notes?: string;
-  messagesReceived?: number;
-  imagesReceived?: number;
-  lastActive?: string;
   updatedAt?: string;
 }
 
@@ -30,13 +24,7 @@ const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
     phone: '+5215511234567',
     activo: true,
     authorized: true,
-    rol: 'Admin',
-    role: 'Admin',
-    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
     notes: 'Supervisora de operaciones y fotógrafa',
-    messagesReceived: 0,
-    imagesReceived: 0,
-    lastActive: 'Reciente',
     updatedAt: new Date().toISOString()
   },
   {
@@ -47,13 +35,7 @@ const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
     phone: '+5215587654321',
     activo: true,
     authorized: true,
-    rol: 'Contacto Autorizado',
-    role: 'Contacto Autorizado',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     notes: 'Equipo técnico de campo',
-    messagesReceived: 0,
-    imagesReceived: 0,
-    lastActive: 'Reciente',
     updatedAt: new Date().toISOString()
   },
   {
@@ -64,13 +46,7 @@ const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
     phone: '+5215544332211',
     activo: true,
     authorized: true,
-    rol: 'Contacto Autorizado',
-    role: 'Contacto Autorizado',
-    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     notes: 'Inspector regional',
-    messagesReceived: 0,
-    imagesReceived: 0,
-    lastActive: 'Reciente',
     updatedAt: new Date().toISOString()
   },
   {
@@ -81,13 +57,7 @@ const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
     phone: '+5215599887766',
     activo: true,
     authorized: true,
-    rol: 'Contacto Autorizado',
-    role: 'Contacto Autorizado',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     notes: 'Coordinadora de expedición',
-    messagesReceived: 0,
-    imagesReceived: 0,
-    lastActive: 'Reciente',
     updatedAt: new Date().toISOString()
   },
   {
@@ -98,13 +68,7 @@ const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
     phone: '+5215533221100',
     activo: true,
     authorized: true,
-    rol: 'Contacto Autorizado',
-    role: 'Contacto Autorizado',
-    avatarUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80',
     notes: 'Logística de almacenamiento',
-    messagesReceived: 0,
-    imagesReceived: 0,
-    lastActive: 'Reciente',
     updatedAt: new Date().toISOString()
   }
 ];
@@ -124,7 +88,6 @@ class EmployeeStore {
             const nombre = e.nombre || e.name || `Empleado ${idx + 1}`;
             const telefono = e.telefono || e.phone || '';
             const activo = e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true);
-            const rol = e.rol || e.role || 'Contacto Autorizado';
             return {
               id: e.id || `emp-${idx + 1}`,
               nombre,
@@ -133,13 +96,7 @@ class EmployeeStore {
               phone: telefono,
               activo,
               authorized: activo,
-              rol,
-              role: rol,
-              avatarUrl: e.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
               notes: e.notes || '',
-              messagesReceived: typeof e.messagesReceived === 'number' ? e.messagesReceived : 0,
-              imagesReceived: typeof e.imagesReceived === 'number' ? e.imagesReceived : 0,
-              lastActive: e.lastActive || 'Reciente',
               updatedAt: e.updatedAt || new Date().toISOString()
             };
           });
@@ -220,7 +177,6 @@ class EmployeeStore {
     const id = 'emp-' + Date.now();
     const nombre = emp.nombre || emp.name || 'Nuevo Contacto';
     const telefono = emp.telefono || emp.phone || '';
-    const rol = emp.rol || emp.role || 'Contacto Autorizado';
     const activo = emp.activo !== undefined ? Boolean(emp.activo) : (emp.authorized !== undefined ? Boolean(emp.authorized) : true);
 
     const newEmp: ChronoEmployee = {
@@ -231,13 +187,7 @@ class EmployeeStore {
       phone: telefono,
       activo,
       authorized: activo,
-      rol,
-      role: rol,
-      avatarUrl: emp.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       notes: emp.notes || '',
-      messagesReceived: 0,
-      imagesReceived: 0,
-      lastActive: 'Recién añadido',
       updatedAt: new Date().toISOString()
     };
 
@@ -263,11 +213,6 @@ class EmployeeStore {
       const val = updates.telefono || updates.phone || emp.telefono;
       emp.telefono = val;
       emp.phone = val;
-    }
-    if (updates.rol !== undefined || updates.role !== undefined) {
-      const val = updates.rol || updates.role || emp.rol;
-      emp.rol = val;
-      emp.role = val;
     }
     if (updates.notes !== undefined) {
       emp.notes = updates.notes;
@@ -330,13 +275,7 @@ class EmployeeStore {
         phone: e.telefono || e.phone || '',
         activo: e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true),
         authorized: e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true),
-        rol: e.rol || e.role || 'Contacto Autorizado',
-        role: e.rol || e.role || 'Contacto Autorizado',
-        avatarUrl: e.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         notes: e.notes || '',
-        messagesReceived: typeof e.messagesReceived === 'number' ? e.messagesReceived : 0,
-        imagesReceived: typeof e.imagesReceived === 'number' ? e.imagesReceived : 0,
-        lastActive: e.lastActive || 'Reciente',
         updatedAt: new Date().toISOString()
       }));
 
