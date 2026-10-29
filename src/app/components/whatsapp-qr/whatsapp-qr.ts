@@ -30,13 +30,13 @@ import { BotService } from '../../services/bot.service';
                 class="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase"
                 [class]="botService.status() === 'active' 
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'"
+                  : (botService.status() === 'stopped' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse')"
               >
-                {{ botService.status() === 'active' ? 'Conectado' : 'Esperando escaneo' }}
+                {{ botService.status() === 'active' ? 'Conectado' : (botService.status() === 'stopped' ? 'Bot Apagado' : 'Esperando escaneo') }}
               </span>
             </div>
             <p class="text-xs text-slate-400 mt-0.5">
-              Protocolo whatsapp-web.js con autenticación LocalAuth multi-dispositivo
+              Protocolo ChronoBot WhatsApp con escaneo de código QR
             </p>
           </div>
         </div>
@@ -56,7 +56,7 @@ import { BotService } from '../../services/bot.service';
       <!-- Main Body: QR Graphic + Guided Instructions -->
       <div class="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-8 items-center py-6">
         
-        <!-- LEFT: High-Fidelity Holographic QR Container (Span 5) -->
+        <!-- LEFT: Holographic QR Container (Span 5) -->
         <div class="md:col-span-5 flex flex-col items-center">
           <div class="relative group p-4 rounded-3xl bg-gradient-to-b from-white/10 to-white/5 border border-white/15 backdrop-blur-2xl shadow-[0_15px_35px_rgba(0,0,0,0.5)]">
             
@@ -103,8 +103,8 @@ import { BotService } from '../../services/bot.service';
                     <mat-icon class="text-3xl">check_circle</mat-icon>
                   </div>
                   <h3 class="text-sm font-bold text-white">Dispositivo Vinculado</h3>
-                  <p class="text-xs text-emerald-400 font-mono mt-0.5">{{ botService.qrData().connectedPhone || '+52 1 55 1123 4567' }}</p>
-                  <span class="text-[11px] text-slate-400 mt-1">Sesión activa y sincronizada</span>
+                  <p class="text-xs text-emerald-400 font-mono mt-0.5">{{ botService.qrData().connectedPhone || 'Sesión activa' }}</p>
+                  <span class="text-[11px] text-slate-400 mt-1">Sincronizado correctamente</span>
                 </div>
               }
             </div>
@@ -129,7 +129,7 @@ import { BotService } from '../../services/bot.service';
             } @else {
               <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
                 <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                Socket Baileys conectado · Listo
+                Socket ChronoBot conectado · Listo
               </div>
             }
           </div>
@@ -179,20 +179,15 @@ import { BotService } from '../../services/bot.service';
           <!-- Interactive Action Buttons -->
           <div class="pt-2 flex flex-wrap items-center gap-3">
             @if (botService.status() !== 'active') {
-              <!-- Simulate Scan / Instant Pair -->
               <button
                 type="button"
-                (click)="botService.simulateQrScan()"
-                [disabled]="botService.isScanning()"
-                class="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 text-xs font-extrabold flex items-center gap-2.5 shadow-[0_0_25px_rgba(16,185,129,0.35)] transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                (click)="botService.startBot()"
+                class="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 text-xs font-extrabold flex items-center gap-2.5 shadow-[0_0_25px_rgba(16,185,129,0.35)] transition-all active:scale-95 cursor-pointer"
               >
-                <mat-icon class="text-lg" [class.animate-spin]="botService.isScanning()">
-                  {{ botService.isScanning() ? 'sync' : 'phonelink_setup' }}
-                </mat-icon>
-                <span>{{ botService.isScanning() ? 'Vinculando dispositivo...' : 'Simular escaneo de teléfono' }}</span>
+                <mat-icon class="text-lg">power_settings_new</mat-icon>
+                <span>Activar Bot y Conectar</span>
               </button>
 
-              <!-- Regenerate QR manually -->
               <button
                 type="button"
                 (click)="botService.regenerateQr()"
@@ -202,38 +197,15 @@ import { BotService } from '../../services/bot.service';
                 <span>Regenerar QR</span>
               </button>
             } @else {
-              <!-- Disconnect option to re-test QR flow -->
               <button
                 type="button"
                 (click)="botService.disconnectWhatsApp()"
                 class="px-4 py-2.5 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-2 transition-all active:scale-95 cursor-pointer shadow-sm"
               >
                 <mat-icon class="text-base">link_off</mat-icon>
-                <span>Desconectar sesión (Probar nuevo QR)</span>
-              </button>
-
-              <button
-                type="button"
-                (click)="botService.regenerateQr()"
-                class="px-4 py-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-slate-300 text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
-              >
-                <mat-icon class="text-base">autorenew</mat-icon>
-                <span>Generar código para otro número</span>
+                <span>Desconectar sesión</span>
               </button>
             }
-          </div>
-
-          <!-- Raw Token Accordion for Devs -->
-          <div class="pt-2">
-            <details class="text-[11px] text-slate-400 group">
-              <summary class="cursor-pointer hover:text-slate-300 flex items-center gap-1.5 select-none font-mono">
-                <mat-icon class="text-sm transition-transform group-open:rotate-90">chevron_right</mat-icon>
-                <span>Ver payload del evento qr (whatsapp-web.js)</span>
-              </summary>
-              <div class="mt-2 p-3 rounded-xl bg-black/60 border border-white/5 font-mono text-[10px] text-emerald-400 break-all select-all">
-                {{ botService.qrData().raw }}
-              </div>
-            </details>
           </div>
         </div>
 
@@ -242,16 +214,16 @@ import { BotService } from '../../services/bot.service';
       <!-- Bottom Status Bar -->
       <div class="relative z-10 pt-4 mt-2 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-400">
         <div class="flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full" [class]="botService.status() === 'active' ? 'bg-emerald-400' : 'bg-amber-400'"></span>
+          <span class="w-2 h-2 rounded-full" [class]="botService.status() === 'active' ? 'bg-emerald-400' : 'bg-rose-400'"></span>
           <span>
             @if (botService.status() === 'active') {
-              Sesión LocalAuth activa en <code class="text-slate-300">.wwebjs_auth</code>
+              ChronoBot activo y listo
             } @else {
-              Esperando callback <code class="text-slate-300">client.on('qr')</code> de whatsapp-web.js
+              ChronoBot inactivo · Escanea el código QR para iniciar
             }
           </span>
         </div>
-        <span class="text-slate-500 font-mono">qrcode-terminal &bull; whatsapp-web.js</span>
+        <span class="text-slate-500 font-mono">ChronoBot WhatsApp Engine</span>
       </div>
     </div>
   `

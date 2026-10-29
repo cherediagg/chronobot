@@ -16,7 +16,7 @@ import { BotService } from '../../services/bot.service';
             <mat-icon class="text-xl">chat</mat-icon>
           </div>
           <div class="min-w-0">
-            <h1 class="text-sm font-bold text-white tracking-tight truncate leading-tight">Fernet WhatsApp</h1>
+            <h1 class="text-sm font-bold text-white tracking-tight truncate leading-tight">ChronoBot WhatsApp</h1>
             <p class="text-[11px] text-emerald-400/80 font-medium truncate mt-0.5">Control Inteligente</p>
           </div>
         </div>
@@ -117,7 +117,7 @@ import { BotService } from '../../services/bot.service';
             <span class="text-xs font-semibold text-slate-300">
               @if (botService.status() === 'active') { Sistema en línea }
               @else if (botService.status() === 'connecting') { Conectando... }
-              @else { Bot inactivo }
+              @else { Bot apagado }
             </span>
           </div>
           <span class="text-[11px] text-slate-500 font-mono">v2.0</span>

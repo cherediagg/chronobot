@@ -1,14 +1,18 @@
-
 import fs from 'node:fs';
 import path from 'node:path';
 import QRCode from 'qrcode';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const chronobotPath = path.resolve(process.cwd(), 'chronobot.js');
+const chronobotModule = require(chronobotPath);
 
 export const EMPLOYEES_FILE_PATH = path.resolve(process.cwd(), 'data', 'employees.json');
 
 export interface ChronoLogEntry {
   id: string;
-  timestamp: string; // e.g. "21/4/2025, 16:28:03"
-  time: string; // "16:28:03"
+  timestamp: string;
+  time: string;
   level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
   message: string;
   details?: unknown;
@@ -61,7 +65,7 @@ export interface ChronoSavedImage {
 export class ChronoBotEngine {
   public static readonly IMAGES_ROOT_DIR = path.resolve(process.cwd(), 'public', 'imagenes');
 
-  private status: 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected' = 'active';
+  private status: 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected' = 'stopped';
   private startTime = Date.now();
   private logs: ChronoLogEntry[] = [];
   private events: ChronoBotEvent[] = [];
@@ -70,17 +74,17 @@ export class ChronoBotEngine {
   private savedImages: ChronoSavedImage[] = [];
 
   // WhatsApp Web QR Pairing State
-  private currentRawQr = '2@9BqW4xZlA9cM=,4zL9xVqW+7KmQ1nO=,88A2xLmOpQ==';
+  private currentRawQr = '';
   private currentQrDataUrl = '';
   private qrGeneratedAt = Date.now();
   private qrExpiresInSeconds = 25;
-  private connectedPhone = '+52 1 55 1123 4567';
+  private connectedPhone = '';
 
   constructor() {
     this.loadEmployeesFromFile();
     this.loadSavedImagesFromDisk();
-    this.initChronoLogs();
     void this.generateQrCode();
+    this.initChronoLogs();
   }
 
   private normalizePhoneNumber(value: string | number): string {
@@ -102,45 +106,41 @@ export class ChronoBotEngine {
   }
 
   /**
-   * Reads employees from data/employees.json strictly for WhatsApp authorization.
-   * ChronoBot does NOT write, add, or delete employees; that is exclusively the server API's responsibility.
+   * Reads employees from data/employees.json using chronobotModule strictly for WhatsApp authorization.
    */
   public loadEmployeesFromFile(): ChronoEmployee[] {
     try {
-      if (fs.existsSync(EMPLOYEES_FILE_PATH)) {
-        const raw = fs.readFileSync(EMPLOYEES_FILE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this.employees = parsed.map((e: Partial<ChronoEmployee>, idx: number) => {
-            const nombre = e.nombre || e.name || `Empleado ${idx + 1}`;
-            const telefono = e.telefono || e.phone || '';
-            const activo = e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true);
-            const rol = e.rol || e.role || 'Contacto Autorizado';
-            return {
-              id: e.id || `emp-${idx + 1}`,
-              nombre,
-              name: nombre,
-              telefono,
-              phone: telefono,
-              activo,
-              authorized: activo,
-              rol,
-              role: rol,
-              avatarUrl: e.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-              notes: e.notes || '',
-              messagesReceived: typeof e.messagesReceived === 'number' ? e.messagesReceived : 0,
-              imagesReceived: typeof e.imagesReceived === 'number' ? e.imagesReceived : 0,
-              lastActive: e.lastActive || 'Reciente',
-              updatedAt: e.updatedAt || new Date().toISOString()
-            };
-          });
-          this.allowedNumbers = this.buildAllowedNumbers(this.employees);
-          return this.employees;
-        }
+      const loaded = chronobotModule.loadEmployees();
+      if (Array.isArray(loaded) && loaded.length > 0) {
+        this.employees = loaded.map((e: Partial<ChronoEmployee>, idx: number) => {
+          const nombre = e.nombre || e.name || `Empleado ${idx + 1}`;
+          const telefono = e.telefono || e.phone || '';
+          const activo = e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true);
+          const rol = e.rol || e.role || 'Contacto Autorizado';
+          return {
+            id: e.id || `emp-${idx + 1}`,
+            nombre,
+            name: nombre,
+            telefono,
+            phone: telefono,
+            activo,
+            authorized: activo,
+            rol,
+            role: rol,
+            avatarUrl: e.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+            notes: e.notes || '',
+            messagesReceived: typeof e.messagesReceived === 'number' ? e.messagesReceived : 0,
+            imagesReceived: typeof e.imagesReceived === 'number' ? e.imagesReceived : 0,
+            lastActive: e.lastActive || 'Reciente',
+            updatedAt: e.updatedAt || new Date().toISOString()
+          };
+        });
+        this.allowedNumbers = this.buildAllowedNumbers(this.employees);
+        return this.employees;
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[ChronoBot Engine] Error al leer ${EMPLOYEES_FILE_PATH}: ${msg}`);
+      console.warn(`[ChronoBot Engine] Error al leer con chronobot.js: ${msg}`);
     }
 
     this.employees = [];
@@ -149,15 +149,18 @@ export class ChronoBotEngine {
   }
 
   /**
-   * Reloads authorized contacts from data/employees.json when informed by the server API.
-   * Updates in-memory allowedNumbers for WhatsApp message filtering.
+   * Reloads authorized contacts from data/employees.json via chronobotModule.
    */
   public reloadAuthorizedContacts(reason?: string): Record<string, string> {
-    this.loadEmployeesFromFile();
+    try {
+      this.allowedNumbers = chronobotModule.refreshAllowedNumbers();
+      this.loadEmployeesFromFile();
+    } catch {
+      this.loadEmployeesFromFile();
+    }
     const count = Object.keys(this.allowedNumbers).length;
-    this.log('log', `Contactos autorizados recargados desde data/employees.json: ${count}`);
     if (reason) {
-      this.addLogInternal('INFO', `[WhatsApp Auth] Lista actualizada (${reason}). ${count} contactos autorizados para recibir imágenes.`);
+      this.addLogInternal('INFO', `[WhatsApp Auth] Lista actualizada (${reason}). ${count} contactos autorizados.`);
     }
     return this.allowedNumbers;
   }
@@ -231,11 +234,13 @@ export class ChronoBotEngine {
   private initChronoLogs() {
     this.logs = [];
     this.events = [];
-    this.addLogInternal('INFO', 'Iniciando cliente de WhatsApp (chronobot.js)...');
-    this.addLogInternal('INFO', 'Escanea el código QR para conectar con el dispositivo móvil:');
-    this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
+    this.addLogInternal('INFO', 'Estado del bot: APAGADO / Socket inactivo.');
+    this.addLogInternal('INFO', 'Inicie el bot y escanea el código QR para conectar WhatsApp.');
     this.addLogInternal('INFO', `Contactos autorizados cargados desde ${path.basename(EMPLOYEES_FILE_PATH)}: ${Object.keys(this.allowedNumbers).length}`);
-    this.addLogInternal('INFO', 'Esperando eventos del socket de WhatsApp...');
+    if (this.currentQrDataUrl) {
+      this.addLogInternal('INFO', 'Código QR disponible para vinculación:');
+      this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
+    }
   }
 
   private addLogInternal(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', message: string, timeStr?: string, options?: { isQr?: boolean; highlightPath?: string; highlightSender?: string; details?: unknown }) {
@@ -257,7 +262,6 @@ export class ChronoBotEngine {
 
     this.logs.push(entry);
 
-    // Keep memory bounded to last 500 logs
     if (this.logs.length > 500) {
       this.logs.shift();
     }
@@ -274,10 +278,16 @@ export class ChronoBotEngine {
     this.addLogInternal(mapped, message, undefined, { details });
   }
 
-  // Handle incoming message with ChronoBot's exact pipeline
   public async handleMessage(payload: { from: string; body?: string; hasMedia?: boolean; type?: string; author?: string }) {
+    if (this.status !== 'active') {
+      this.log('warn', 'Bot apagado. No se pueden recibir ni procesar mensajes.');
+      return { handled: false, reason: 'bot_stopped' };
+    }
+
     const senderRaw = payload.author || payload.from || '';
-    const cleanNumber = this.normalizePhoneNumber(senderRaw.replace(/@(c\.us|s\.whatsapp\.net)$/i, ''));
+    const cleanNumber = chronobotModule.normalizeWhatsAppPhone
+      ? chronobotModule.normalizeWhatsAppPhone(senderRaw)
+      : this.normalizePhoneNumber(senderRaw.replace(/@(c\.us|s\.whatsapp\.net)$/i, ''));
 
     this.log('log', 'Mensaje recibido:', {
       from: payload.from,
@@ -324,13 +334,11 @@ export class ChronoBotEngine {
         timestamp: Date.now()
       });
 
-      // Quick simulated confirmation
       this.addLogInternal('INFO', `Respuesta enviada a +${cleanNumber}: "¡Hola ${contactName}! Mensaje recibido."`);
       this.log('log', 'Confirmación enviada.');
       return { handled: true, contactName, hasMedia: false };
     }
 
-    // Media ingestion process according to mediaStorage.js - writes real file to disk
     this.addLogInternal('INFO', 'Descarga de imagen 1/1');
     const date = new Date();
     const month = date.toLocaleString('es-ES', { month: 'long' }).toLowerCase();
@@ -351,7 +359,6 @@ export class ChronoBotEngine {
       if (rawData) {
         fs.writeFileSync(fullFilePath, Buffer.from(rawData, 'base64'));
       } else {
-        // Real 1x1 valid JPEG image buffer on disk
         const sampleJpg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
         fs.writeFileSync(fullFilePath, sampleJpg);
       }
@@ -379,14 +386,13 @@ export class ChronoBotEngine {
     return { handled: true, contactName, hasMedia: true, filePath: relativePath, fileName };
   }
 
-  // Periodic heartbeat / telemetry
   public pollHeartbeat() {
     if (this.status !== 'active') return;
     const msgs = [
-      'Heartbeat de conexión activo · Socket Baileys/WWebJS verificado (latencia: 14ms)',
-      'Sincronización de cola de mensajes completada · 0 mensajes pendientes',
-      'Socket de WhatsApp en estado READY · Sesión autenticada y cifrada',
-      'Verificación periódica del cliente · Canal de escucha listo para recibir eventos'
+      'Heartbeat de conexión activo · ChronoBot socket verificado',
+      'Sincronización completada · 0 mensajes pendientes',
+      'Socket de WhatsApp en estado READY',
+      'Canal de escucha activo'
     ];
     const msg = msgs[Math.floor(Math.random() * msgs.length)];
     this.addLogInternal('INFO', msg);
@@ -398,7 +404,7 @@ export class ChronoBotEngine {
     let rand2 = '';
     for (let i = 0; i < 24; i++) rand1 += chars.charAt(Math.floor(Math.random() * chars.length));
     for (let i = 0; i < 32; i++) rand2 += chars.charAt(Math.floor(Math.random() * chars.length));
-    
+
     this.currentRawQr = `2@${rand1}==,${rand2}=,${Date.now()}==`;
     this.qrGeneratedAt = Date.now();
 
@@ -417,51 +423,51 @@ export class ChronoBotEngine {
     return this.currentQrDataUrl;
   }
 
-  // Control commands
-  public setStatus(newStatus: 'active' | 'stopped' | 'restarting' | 'waiting_qr' | 'disconnected') {
+  public setStatus(newStatus: 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected') {
     this.status = newStatus;
     if (newStatus === 'active') {
-      this.log('log', 'Cliente conectado y listo.');
+      this.log('log', 'Cliente WhatsApp conectado y listo.');
       this.events.unshift({
         id: 'ev-' + Date.now(),
         type: 'client_connected',
-        title: 'Cliente reconectado',
+        title: 'Cliente conectado',
         subtitle: 'WhatsApp',
         relativeTime: 'Ahora mismo',
         timestamp: Date.now()
       });
     } else if (newStatus === 'stopped' || newStatus === 'disconnected' || newStatus === 'waiting_qr') {
-      this.log('warn', 'Cliente de WhatsApp desconectado.');
+      this.connectedPhone = '';
+      this.log('warn', 'Estado del bot: APAGADO / Desconectado.');
       void this.generateQrCode().then(() => {
         this.addLogInternal('INFO', 'Escanea el código QR con WhatsApp para iniciar sesión:', undefined, { isQr: true });
         this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
       });
     } else if (newStatus === 'restarting') {
+      this.connectedPhone = '';
       this.startTime = Date.now();
-      this.log('log', 'Reiniciando instancia de chronobot.js...');
+      this.log('log', 'Reiniciando ChronoBot...');
       void this.generateQrCode();
       setTimeout(() => {
-        this.status = 'active';
-        this.log('log', 'Autenticación correcta.');
-        this.log('log', 'Cliente conectado y listo.');
+        this.status = 'waiting_qr';
+        this.log('log', 'Esperando escaneo de código QR para conectar...');
       }, 1000);
     }
   }
 
-  public async simulateQrScan(simulatedPhone = '+52 1 55 1123 4567') {
-    this.connectedPhone = simulatedPhone;
+  public async simulateQrScan(simulatedPhone = '') {
+    const phoneToConnect = simulatedPhone || '+52 1 55 1123 4567';
+    this.connectedPhone = phoneToConnect;
     this.status = 'active';
     this.startTime = Date.now();
 
-    this.addLogInternal('INFO', `[QR Escaneado] Dispositivo móvil detectado: ${simulatedPhone}`);
-    this.addLogInternal('INFO', 'Autenticación correcta (LocalAuth sesión guardada en .wwebjs_auth).');
-    this.addLogInternal('INFO', 'Cliente conectado y listo.');
+    this.addLogInternal('INFO', `[QR Escaneado] Dispositivo móvil vinculado: ${phoneToConnect}`);
+    this.addLogInternal('INFO', 'Autenticación correcta. Cliente conectado y listo.');
 
     this.events.unshift({
       id: 'ev-' + Date.now(),
       type: 'client_connected',
       title: 'Cliente conectado',
-      subtitle: `WhatsApp (${simulatedPhone})`,
+      subtitle: `WhatsApp (${phoneToConnect})`,
       relativeTime: 'Ahora mismo',
       timestamp: Date.now()
     });
@@ -476,8 +482,7 @@ export class ChronoBotEngine {
   public async regenerateQr() {
     await this.generateQrCode();
     this.status = 'waiting_qr';
-    this.addLogInternal('INFO', 'Código QR anterior expirado. Nuevo token generado.');
-    this.addLogInternal('INFO', 'Escanea el código QR con WhatsApp para iniciar sesión:');
+    this.addLogInternal('INFO', 'Código QR actualizado. Escanea con WhatsApp para iniciar sesión:');
     this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
     return {
       raw: this.currentRawQr,
@@ -488,10 +493,11 @@ export class ChronoBotEngine {
   }
 
   public async disconnectWhatsApp() {
-    this.status = 'waiting_qr';
+    this.status = 'stopped';
+    this.connectedPhone = '';
     await this.generateQrCode();
-    this.addLogInternal('WARN', 'Sesión de WhatsApp cerrada / desconectada.');
-    this.addLogInternal('INFO', 'Escanea el código QR con WhatsApp para iniciar sesión:');
+    this.addLogInternal('WARN', 'Sesión de WhatsApp desconectada. Bot en estado APAGADO.');
+    this.addLogInternal('INFO', 'Escanea el código QR con WhatsApp para conectar:');
     this.addLogInternal('INFO', '[QR]', undefined, { isQr: true });
     return {
       status: this.status,
@@ -512,11 +518,11 @@ export class ChronoBotEngine {
 
   public clearLogs() {
     this.logs = [];
-    this.addLogInternal('INFO', 'Consola de chronobot.js limpiada.');
+    this.addLogInternal('INFO', 'Consola limpiada.');
   }
 
   public getStatus() {
-    const uptimeSec = Math.floor((Date.now() - this.startTime) / 1000);
+    const uptimeSec = this.status === 'active' ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
     const hours = Math.floor(uptimeSec / 3600);
     const minutes = Math.floor((uptimeSec % 3600) / 60);
 
@@ -564,7 +570,7 @@ export class ChronoBotEngine {
         console.warn(`[ChronoBot Engine] No se pudo borrar ${img.path}:`, err);
       }
       this.loadSavedImagesFromDisk();
-      this.log('log', `Archivo de imagen eliminado del almacenamiento: ${img.filename}`);
+      this.log('log', `Archivo de imagen eliminado: ${img.filename}`);
       return img;
     }
     return null;
