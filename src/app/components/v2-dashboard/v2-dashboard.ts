@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, effect, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { BotService } from '../../services/bot.service';
@@ -19,20 +19,6 @@ export class V2Dashboard {
 
   readonly messageInput = new FormControl('', { nonNullable: true });
   readonly selectedImageForModal = signal<SavedImage | null>(null);
-
-  // Aurora intensity & interactive aura controls
-  readonly activeAuroraFilter = signal<'all' | 'logs' | 'media' | 'controls'>('all');
-
-  // Memory calculation percentage
-  readonly ramPercentage = computed(() => {
-    const stats = this.botService.systemStats();
-    return Math.round((stats.ramUsedMb / stats.ramTotalMb) * 100);
-  });
-
-  readonly diskPercentage = computed(() => {
-    const stats = this.botService.systemStats();
-    return Math.round((stats.diskUsedGb / stats.diskTotalGb) * 100);
-  });
 
   constructor() {
     effect(() => {
