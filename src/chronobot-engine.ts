@@ -309,8 +309,17 @@ export class ChronoBotEngine {
           const text = data.toString('utf-8').trim();
           if (text) {
             text.split('\n').forEach(line => {
-              if (line.trim()) {
-                this.addLogInternal('INFO', `[Node Output] ${line.trim()}`);
+              const trimmed = line.trim();
+              if (trimmed) {
+                if (trimmed.includes('[QR_CODE_DATA]')) {
+                  const qrData = trimmed.split('[QR_CODE_DATA]')[1]?.trim();
+                  if (qrData) {
+                    void this.updateRealQrCode(qrData);
+                  }
+                } else if (trimmed.includes('Cliente conectado y listo') || trimmed.includes('Autenticación correcta.')) {
+                  this.status = 'active';
+                }
+                this.addLogInternal('INFO', `[Node Output] ${trimmed}`);
               }
             });
           }
@@ -492,6 +501,24 @@ export class ChronoBotEngine {
     ];
     const msg = msgs[Math.floor(Math.random() * msgs.length)];
     this.addLogInternal('INFO', msg);
+  }
+
+  public async updateRealQrCode(rawQr: string) {
+    this.currentRawQr = rawQr;
+    this.qrGeneratedAt = Date.now();
+    this.status = 'waiting_qr';
+    try {
+      this.currentQrDataUrl = await QRCode.toDataURL(rawQr, {
+        width: 340,
+        margin: 2,
+        color: {
+          dark: '#031c13',
+          light: '#ffffff'
+        }
+      });
+    } catch (err: unknown) {
+      console.error('[ChronoBot Engine] Error generando QR data URL:', err);
+    }
   }
 
   public async generateQrCode(): Promise<string> {
