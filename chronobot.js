@@ -22,6 +22,7 @@ const RUNTIME_LOG_PATH = path.join(AUTH_DIRECTORY, 'chronobot-runtime.jsonl');
 const RUNTIME_COMMAND_PATH = path.join(AUTH_DIRECTORY, 'chronobot-command.json');
 const IMAGES_DIRECTORY = path.resolve(__dirname, 'public', 'imagenes');
 const EMBEDDED = process.env.CHRONOBOT_EMBEDDED === '1';
+const INVALID_IMAGE_FORMAT_MESSAGE = '🚨🚨 Formato Incorrecto 🚨🚨 Recuerda HACER la foto desde tu cámara. Adjuntar la imagen de tu Registro cómo Documento. 📲 Pasos a Seguir:  1. Clip 📎 2. Documento 📄 3.Seleccionar Imagen 4.Enviar ';
 
 let employees = loadEmployees();
 let allowedNumbers = buildAllowedNumbers(employees);
@@ -402,14 +403,21 @@ function createBot() {
       allowedNumbers = currentAllowedNumbers;
       log('log', `Contacto autorizado: ${contactName} (+${phoneNumber})`);
 
+      const messageType = [message.type, message._data?.type]
+        .find(value => typeof value === 'string' && value.trim()) || 'desconocido';
+
+      if (messageType === 'image') {
+        await sendText(client, phoneNumber, INVALID_IMAGE_FORMAT_MESSAGE);
+        log('warn', `Imagen enviada como foto rechazada; se enviaron instrucciones a ${contactName} (+${phoneNumber}).`);
+        return;
+      }
+
       if (!message.hasMedia) {
         log('log', 'Mensaje sin multimedia; no hay acción configurada.');
         emit({ type: 'message_received', contactName, phoneNumber, body: message.body || '' });
         return;
       }
 
-      const messageType = [message.type, message._data?.type]
-        .find(value => typeof value === 'string' && value.trim()) || 'desconocido';
       if (messageType !== 'desconocido' && !['image', 'document'].includes(messageType)) {
         log('log', `Multimedia ignorada: tipo ${messageType}; remitente ${senderContext}.`);
         return;
@@ -425,9 +433,8 @@ function createBot() {
         return;
       }
       if (messageType !== 'document') {
-        const formatMessage = '🚨🚨 Formato Incorrecto 🚨🚨 Recuerda HACER la foto desde tu cámara. Adjuntar la imagen de tu Registro cómo Documento. 📲 Pasos a Seguir:  1. Clip 📎 2. Documento 📄 3.Seleccionar Imagen 4.Enviar ';
-        await sendText(client, phoneNumber, formatMessage);
-        log('warn', `Imagen válida rechazada por formato (${messageType}): se indicó a ${contactName} (+${phoneNumber}) que la envíe como documento.`);
+        await sendText(client, phoneNumber, INVALID_IMAGE_FORMAT_MESSAGE);
+        log('warn', `Imagen válida con tipo no identificado rechazada; se enviaron instrucciones a ${contactName} (+${phoneNumber}).`);
         return;
       }
 
