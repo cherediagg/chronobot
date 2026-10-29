@@ -1,27 +1,125 @@
-<div class="relative min-h-screen text-slate-100 overflow-x-hidden p-6 sm:p-10 max-w-[1600px] mx-auto select-none font-sans">
-
-  <!-- WhatsApp Web QR Code Linker - Front & Center when Disconnected -->
-  @if (botService.status() !== 'active') {
-    <section class="mb-10" aria-label="Vinculación de WhatsApp Web">
-      <app-whatsapp-qr mode="card" />
-    </section>
-  }
-
-  <!-- Fluid Summary Metrics Atomic Component -->
-  <app-dashboard-metrics />
-
-  <!-- Full-Width Terminal Console Atomic Component -->
-  <div class="mb-12">
-    <app-terminal-console />
-  </div>
-
-  <!-- Cinematic Media Ribbon Atomic Component -->
-  <app-media-ribbon (selectImage)="openImageDetails($event)" />
-
-  <!-- Shared Image Lightbox Modal Atomic Component -->
-  <app-image-lightbox-modal
-    [image]="selectedImageForModal()"
-    (closeModal)="closeImageModal()"
+<div class="space-y-6">
+  <!-- Top Bar Metrics -->
+  <app-dashboard-metrics
+    [botStatus]="botStatus()"
+    [contactsCount]="contactsCount()"
+    [savedImagesCount]="savedImagesCount()"
+    [uptime]="uptime()"
   />
 
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column: Terminal Logs Console (2 cols wide) -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+          <mat-icon class="text-cyan-400 text-lg">terminal</mat-icon>
+          Consola del Bot en Tiempo Real
+        </h2>
+        <button
+          type="button"
+          (click)="navigateToLogs()"
+          class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer"
+        >
+          <span>Ver pantalla completa</span>
+          <mat-icon class="text-sm">open_in_new</mat-icon>
+        </button>
+      </div>
+
+      <app-terminal-console
+        [logs]="logs()"
+        [autoScroll]="autoScrollLogs()"
+        [heightClass]="'h-[420px]'"
+        (autoScrollChange)="toggleAutoScroll($event)"
+        (clearLogs)="clearLogs()"
+      />
+    </div>
+
+    <!-- Right Column: Quick Bot Controls & QR Pairing Widget -->
+    <div class="space-y-6">
+      <!-- Quick Actions -->
+      <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-6 backdrop-blur-xl space-y-4">
+        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+          <mat-icon class="text-cyan-400 text-lg">tune</mat-icon>
+          Acciones de Control
+        </h2>
+
+        <div class="grid grid-cols-2 gap-3">
+          @if (botStatus() === 'stopped' || botStatus() === 'disconnected') {
+            <button
+              type="button"
+              (click)="startBot()"
+              class="flex items-center justify-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all cursor-pointer"
+            >
+              <mat-icon class="text-base">play_arrow</mat-icon>
+              <span>Iniciar Bot</span>
+            </button>
+          } @else {
+            <button
+              type="button"
+              (click)="stopBot()"
+              class="flex items-center justify-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white font-bold text-xs shadow-[0_0_20px_rgba(244,63,94,0.3)] transition-all cursor-pointer"
+            >
+              <mat-icon class="text-base">stop</mat-icon>
+              <span>Detener</span>
+            </button>
+          }
+
+          <button
+            type="button"
+            (click)="restartBot()"
+            class="flex items-center justify-center gap-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-semibold text-xs transition-all cursor-pointer"
+          >
+            <mat-icon class="text-base text-cyan-400">restart_alt</mat-icon>
+            <span>Reiniciar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick QR Status Widget -->
+      <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-6 backdrop-blur-xl space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <mat-icon class="text-cyan-400 text-lg">qr_code_2</mat-icon>
+            Estado WhatsApp
+          </h2>
+          <button
+            type="button"
+            (click)="navigateToQr()"
+            class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer"
+          >
+            <span>Ampliar</span>
+            <mat-icon class="text-sm">chevron_right</mat-icon>
+          </button>
+        </div>
+
+        @if (qrData()?.dataUrl) {
+          <div class="p-3 bg-white rounded-2xl flex items-center justify-center cursor-pointer shadow-lg" (click)="navigateToQr()">
+            <img [src]="qrData()?.dataUrl" alt="QR Code" class="w-40 h-40 object-contain" />
+          </div>
+          <p class="text-[11px] text-center text-cyan-300 font-mono">Código QR disponible. Haz clic para escanear.</p>
+        } @else {
+          <div class="p-6 rounded-2xl bg-black/40 border border-dashed border-white/10 text-center space-y-2">
+            <mat-icon class="text-3xl text-slate-500">wifi_off</mat-icon>
+            <p class="text-xs text-slate-400">
+              {{ botStatus() === 'active' ? 'WhatsApp Web conectado y sincronizado.' : 'Bot inactivo o esperando emisión de QR.' }}
+            </p>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Row: Recent Media Stream Ribbon -->
+  <app-media-ribbon
+    [images]="savedImages()"
+    [totalImagesCount]="savedImagesCount()"
+    (openImage)="openImageDetails($event)"
+    (viewAllImages)="navigateToImages()"
+  />
+
+  <!-- Shared Lightbox Modal -->
+  <app-image-lightbox-modal
+    [image]="selectedImage()"
+    (closeModal)="closeImageDetails()"
+  />
 </div>

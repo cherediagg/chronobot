@@ -14,112 +14,51 @@ websocket connection issues.
 ✔ Building...
 Browser bundles
 Initial chunk files  | Names            |  Raw size
-main.js              | main             | 358.16 kB |
-styles.css           | styles           | 112.79 kB |
+main.js              | main             | 219.74 kB |
+styles.css           | styles           |  72.45 kB |
 
-                     | Initial total    | 470.95 kB
+                     | Initial total    | 292.19 kB
 
 
 Server bundles
 Initial chunk files  | Names            |  Raw size
-main.server.mjs      | main.server      | 359.42 kB |
+main.server.mjs      | main.server      | 221.00 kB |
 server.mjs           | server           |  56.74 kB |
 polyfills.server.mjs | polyfills.server | 303 bytes |
 
-Application bundle generation complete. [5.780 seconds] - 2026-10-29T19:44:26.737Z
+Application bundle generation complete. [7.505 seconds] - 2026-10-29T20:32:45.982Z
 
 Watch mode enabled. Watching for file changes...
 NOTE: Raw file sizes do not reflect development server per-request transformations.
   ➜  Local:   http://localhost:3000/
   ➜  Network: http://192.168.0.2:3000/
 Allowing all hosts via "*" is a security risk. This configuration should only be used when validation for "Host" and "X-Forwarded-Host" headers is performed in another layer, such as a load balancer or reverse proxy. For more information see: https://angular.dev/best-practices/security#preventing-server-side-request-forgery-ssrf
-(node:124290) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(node:529854) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 (Use `node --trace-deprecation ...` to show where the warning was created)
 NG02801: Angular detected that `HttpClient` is not configured to use `fetch` APIs. It's strongly recommended to enable `fetch` for applications that use Server-Side Rendering for better performance and compatibility. To enable `fetch`, add the `withFetch()` to the `provideHttpClient()` call at the root of the application.
 ❯ Changes detected. Rebuilding...
 ✔ Changes detected. Rebuilding...
 Browser bundles
 Initial chunk files | Names       |  Raw size
-main.js             | main        | 363.52 kB |
+main.js             | main        | 220.43 kB |
 
 
 Server bundles
 Initial chunk files | Names       |  Raw size
-main.server.mjs     | main.server | 364.78 kB |
+main.server.mjs     | main.server | 221.68 kB |
 
-Application bundle generation complete. [6.192 seconds] - 2026-10-29T20:01:29.071Z
+Application bundle generation complete. [1.841 seconds] - 2026-10-29T20:35:28.968Z
 
-Page reload sent to client(s).
-❯ Changes detected. Rebuilding...
-✔ Changes detected. Rebuilding...
-Browser bundles
-Initial chunk files | Names       |  Raw size
-main.js             | main        | 352.45 kB |
-
-
-Server bundles
-Initial chunk files | Names       |  Raw size
-main.server.mjs     | main.server | 353.70 kB |
-
-Application bundle generation complete. [0.925 seconds] - 2026-10-29T20:01:38.516Z
-
-Page reload sent to client(s).
-❯ Changes detected. Rebuilding...
-✔ Changes detected. Rebuilding...
-Browser bundles
-Initial chunk files | Names       |  Raw size
-main.js             | main        | 325.79 kB |
-
-
-Server bundles
-Initial chunk files | Names       |  Raw size
-main.server.mjs     | main.server | 327.05 kB |
-
-Application bundle generation complete. [0.805 seconds] - 2026-10-29T20:01:53.715Z
-
-Page reload sent to client(s).
-❯ Changes detected. Rebuilding...
-✔ Changes detected. Rebuilding...
-Application bundle generation failed. [0.998 seconds] - 2026-10-29T20:03:44.810Z
-
-[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mNG5002: Incomplete block "if". If you meant to write the @ character, you should use the "&#64;" HTML entity instead.[0m [1m[35m[plugin angular-compiler][0m
-
-    src/app/components/contacts-view/contact-delete-modal/contact-delete-modal.ts:10:4:
-[37m      10 │     [32m@if (contact())[37m; as item) {
-         ╵     [32m~~~~~~~~~~~~~~~[0m
-
-
-[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mNG5002: Invalid ICU message. Missing '}'.[0m [1m[35m[plugin angular-compiler][0m
-
-    src/app/components/contacts-view/contact-delete-modal/contact-delete-modal.ts:19:70:
-[37m      19 │ ...te a <strong class="text-white"[32m>[37m{{ item.name }}</strong> ({{ it...
-         ╵                                   [32m^[0m
-
-
-[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mNG5002: Unexpected character "EOF" (Do you have an unescaped "{" in your template? Use "{{ '{' }}") to escape it.)[0m [1m[35m[plugin angular-compiler][0m
-
-    src/app/components/contacts-view/contact-delete-modal/contact-delete-modal.ts:45:2:
-[37m      45 │   [32m`[37m
-         ╵   [32m^[0m
-
-
-❯ Changes detected. Rebuilding...
-✔ Changes detected. Rebuilding...
-Browser bundles
-Initial chunk files  | Names            |  Raw size
-main.js              | main             | 330.64 kB |
-styles.css           | styles           | 112.79 kB |
-
-                     | Initial total    | 443.43 kB
-
-
-Server bundles
-Initial chunk files  | Names            |  Raw size
-main.server.mjs      | main.server      | 331.90 kB |
-server.mjs           | server           |  56.74 kB |
-polyfills.server.mjs | polyfills.server | 303 bytes |
-
-Application bundle generation complete. [0.886 seconds] - 2026-10-29T20:04:28.839Z
-
-Page reload sent to client(s).
-Allowing all hosts via "*" is a security risk. This configuration should only be used when validation for "Host" and "X-Forwarded-Host" headers is performed in another layer, such as a load balancer or reverse proxy. For more information see: https://angular.dev/best-practices/security#preventing-server-side-request-forgery-ssrf
+8:35:32 PM [vite] (ssr) ✨ new dependencies optimized: @angular/common/http
+8:35:32 PM [vite] (ssr) ✨ optimized dependencies changed. reloading
+8:35:34 PM [vite] (ssr) Error when evaluating SSR module /main.server.mjs?timestamp=1793306128976: There is a new version of the pre-bundle for "/app/.angular/cache/21.2.29/app/vite/deps_ssr/@angular_core.js?v=db0245b8", a page reload is going to ask for it.
+      at throwOutdatedRequest (file:///app/node_modules/vite/dist/node/chunks/config.js:8975:32)
+      at LoadPluginContext.load (file:///app/node_modules/vite/dist/node/chunks/config.js:8946:118)
+      at EnvironmentPluginContainer.load (file:///app/node_modules/vite/dist/node/chunks/config.js:29010:56)
+      at loadAndTransform (file:///app/node_modules/vite/dist/node/chunks/config.js:22872:43)
+      at doTransform (file:///app/node_modules/vite/dist/node/chunks/config.js:22841:17)
+      at async fetchModule (file:///app/node_modules/vite/dist/node/chunks/config.js:34244:15)
+      at async handleInvoke (file:///app/node_modules/vite/dist/node/chunks/config.js:26084:21)
+      at async EventEmitter.listenerForInvokeHandler (file:///app/node_modules/vite/dist/node/chunks/config.js:26139:13)
+An unhandled exception occurred: There is a new version of the pre-bundle for "/app/.angular/cache/21.2.29/app/vite/deps_ssr/@angular_core.js?v=db0245b8", a page reload is going to ask for it.
+See "/tmp/ng-4aei07/angular-errors.log" for further details.

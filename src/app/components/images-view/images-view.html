@@ -1,0 +1,114 @@
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+    <div>
+      <div class="flex items-center gap-2">
+        <mat-icon class="text-cyan-400 text-xl">collections</mat-icon>
+        <h1 class="text-xl font-black tracking-tight text-white">Galería de Imágenes Almacenadas</h1>
+      </div>
+      <p class="text-xs text-slate-400 mt-1">
+        Archivos multimedia descargados por el bot en la carpeta física <span class="text-cyan-400 font-mono">public/saved_images/</span>.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="px-3.5 py-1.5 rounded-2xl bg-[#0e1422]/80 border border-white/10 text-xs font-mono text-slate-300">
+        <span class="text-slate-500">Archivos:</span> <strong class="text-cyan-300 font-bold">{{ savedImages().length }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search and filter bar -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div class="relative sm:col-span-2">
+      <mat-icon class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">search</mat-icon>
+      <input
+        type="text"
+        [value]="searchQuery()"
+        (input)="onSearchChange($event)"
+        placeholder="Buscar por remitente o nombre de archivo..."
+        class="w-full pl-10 pr-4 py-2.5 bg-[#0e1422]/80 border border-white/10 rounded-2xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
+      />
+    </div>
+
+    <div class="flex items-center justify-between px-4 py-2 bg-[#0e1422]/80 border border-white/10 rounded-2xl text-xs">
+      <span class="text-slate-400">Total Almacenado:</span>
+      <span class="font-mono font-bold text-cyan-300">{{ totalStorageSize() }}</span>
+    </div>
+  </div>
+
+  <!-- Image Grid -->
+  @if (filteredImages().length > 0) {
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      @for (img of filteredImages(); track img.id) {
+        <div class="group relative bg-[#0e1422]/80 border border-white/10 rounded-2xl overflow-hidden hover:border-cyan-500/40 transition-all duration-300 flex flex-col justify-between">
+          <!-- Thumbnail container -->
+          <div class="relative aspect-square overflow-hidden bg-black/50 cursor-pointer" (click)="openLightbox(img)">
+            <img
+              [src]="img.imageUrl"
+              [alt]="img.senderName"
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <span class="p-2.5 rounded-full bg-cyan-500/80 text-slate-950 font-bold text-xs shadow-lg backdrop-blur-md flex items-center gap-1">
+                <mat-icon class="text-base">visibility</mat-icon>
+                <span>Ver foto</span>
+              </span>
+            </div>
+
+            <div class="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[10px] font-mono text-cyan-300 border border-white/10">
+              {{ img.size }}
+            </div>
+          </div>
+
+          <!-- Metadata -->
+          <div class="p-3.5 flex flex-col gap-1.5 border-t border-white/5 bg-black/20">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-white truncate max-w-[140px]" [title]="img.senderName">
+                {{ img.senderName }}
+              </span>
+              <span class="text-[10px] text-slate-500 font-mono">{{ img.dateFormatted }}</span>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+              <span class="truncate max-w-[150px] text-slate-500" [title]="img.filename">{{ img.filename }}</span>
+              <div class="flex items-center gap-1">
+                <a
+                  [href]="img.imageUrl"
+                  [download]="img.filename"
+                  class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors"
+                  title="Descargar imagen"
+                >
+                  <mat-icon class="text-sm">download</mat-icon>
+                </a>
+                <button
+                  type="button"
+                  (click)="deleteImage(img.id)"
+                  class="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                  title="Eliminar del servidor"
+                >
+                  <mat-icon class="text-sm">delete</mat-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  } @else {
+    <div class="bg-[#0e1422]/60 border border-white/5 rounded-3xl p-12 text-center">
+      <mat-icon class="text-4xl text-slate-600 mb-2">image_not_supported</mat-icon>
+      <h3 class="text-sm font-bold text-slate-300">No hay imágenes guardadas</h3>
+      <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+        Cuando los contactos autorizados envíen imágenes a WhatsApp, se guardarán y mostrarán automáticamente aquí.
+      </p>
+    </div>
+  }
+
+  <!-- Atomic Lightbox Modal -->
+  <app-image-lightbox-modal
+    [image]="selectedImage()"
+    (closeModal)="closeLightbox()"
+  />
+</div>

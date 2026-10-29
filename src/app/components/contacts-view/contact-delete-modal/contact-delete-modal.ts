@@ -6,43 +6,7 @@ import { Contact } from '../../../models/bot.model';
   selector: 'app-contact-delete-modal',
   imports: [MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @if (contact(); as item) {
-      <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-6">
-        <div class="bg-[#0e1422]/90 border border-rose-500/30 rounded-3xl max-w-md w-full p-6 shadow-[0_0_100px_rgba(244,63,94,0.3)] backdrop-blur-3xl">
-          <div class="flex items-center gap-3 pb-3 border-b border-white/5 text-rose-400">
-            <mat-icon class="text-2xl">warning</mat-icon>
-            <h3 class="text-base font-bold text-white">¿Eliminar empleado?</h3>
-          </div>
-
-          <p class="text-xs text-slate-300 mt-4 leading-relaxed">
-            Se eliminará permanentemente a <strong class="text-white">{{ item.name }}</strong> ({{ item.phone }}) del fichero físico <span class="text-rose-300 font-mono">data/employees.json</span>.
-          </p>
-
-          <p class="text-[11px] text-slate-400 mt-2">
-            El bot de WhatsApp revocará de inmediato su acceso y ya no podrá almacenar imágenes.
-          </p>
-
-          <div class="flex items-center justify-end gap-3 pt-5 mt-4 border-t border-white/5">
-            <button
-              type="button"
-              (click)="cancel.emit()"
-              class="px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              (click)="confirm.emit(item)"
-              class="px-5 py-2.5 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold shadow-[0_0_20px_rgba(244,63,94,0.4)] transition-all cursor-pointer"
-            >
-              Sí, eliminar
-            </button>
-          </div>
-        </div>
-      </div>
-    }
-  `
+  templateUrl: './contact-delete-modal.html'
 })
 export class ContactDeleteModal {
   readonly contact = input<Contact | null>(null);

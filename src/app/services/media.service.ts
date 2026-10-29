@@ -1,48 +1,43 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { SavedImage } from '../models/bot.model';
-import { LogsService } from './logs.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class MediaService {
-  private readonly logsService = inject(LogsService);
+  private readonly http = inject(HttpClient);
 
   readonly savedImages = signal<SavedImage[]>([]);
 
-  readonly savedImagesCount = computed(() => {
-    return this.savedImages().length;
-  });
+  constructor() {
+    this.fetchImages();
+    setInterval(() => {
+      this.fetchImages();
+    }, 5000);
+  }
 
-  readonly totalImagesVolumeFormatted = computed(() => {
-    let totalBytes = 0;
-    for (const img of this.savedImages()) {
-      if (img.size.includes('MB')) {
-        totalBytes += parseFloat(img.size) * 1024 * 1024;
-      } else if (img.size.includes('KB')) {
-        totalBytes += parseFloat(img.size) * 1024;
-      }
-    }
-    if (totalBytes >= 1024 * 1024) {
-      return `${(totalBytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    return `${(totalBytes / 1024).toFixed(1)} KB`;
-  });
+  fetchImages() {
+    this.http.get<SavedImage[]>('/api/bot/images').subscribe({
+      next: (res: any) => {
+        if (Array.isArray(res)) {
+          this.savedImages.set(res);
+        } else if (res && Array.isArray(res.images)) {
+          this.savedImages.set(res.images);
+        } else {
+          this.savedImages.set([]);
+        }
+      },
+      error: () => {}
+    });
+  }
 
-  readonly firstFiveImages = computed(() => {
-    return this.savedImages().slice(0, 5);
-  });
+  readonly savedImagesCount = computed(() => this.savedImages().length);
 
-  async deleteImage(id: string): Promise<boolean> {
-    try {
-      const res = await fetch(`/api/bot/images/${id}`, {
-        method: 'DELETE'
-      });
-      return res.ok;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logsService.addLog('ERROR', `Error al eliminar archivo de imagen del servidor: ${msg}`);
-      return false;
-    }
+  deleteImage(id: string) {
+    this.http.delete(`/api/bot/images/${id}`).subscribe({
+      next: () => this.fetchImages(),
+      error: (err: any) => console.error('Error deleting image:', err)
+    });
   }
 }

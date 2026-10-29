@@ -1,0 +1,36 @@
+<div class="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6" *ngIf="image()">
+  <div class="relative max-w-4xl w-full max-h-[90vh] bg-[#0e1422] border border-white/10 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+    <div class="flex items-center justify-between p-4 border-b border-white/5 bg-black/40">
+      <div class="flex items-center gap-3">
+        <mat-icon class="text-cyan-400 text-lg">image</mat-icon>
+        <div>
+          <h3 class="text-sm font-bold text-white leading-none">{{ image()?.filename }}</h3>
+          <p class="text-[11px] text-slate-400 mt-1 font-mono">
+            Enviado por {{ image()?.senderName }} • {{ image()?.dateFormatted }}
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a
+          [href]="image()?.imageUrl"
+          [download]="image()?.filename"
+          class="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 transition-colors"
+          title="Descargar"
+        >
+          <mat-icon class="text-base">download</mat-icon>
+        </a>
+        <button
+          type="button"
+          (click)="closeModal.emit()"
+          class="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+        >
+          <mat-icon class="text-base">close</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/80">
+      <img [src]="image()?.imageUrl" [alt]="image()?.filename" class="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg" />
+    </div>
+  </div>
+</div>

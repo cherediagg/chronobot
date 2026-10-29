@@ -1,0 +1,52 @@
+<div class="space-y-6">
+  <!-- Top bar -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+    <div>
+      <div class="flex items-center gap-2">
+        <mat-icon class="text-cyan-400 text-xl">qr_code_2</mat-icon>
+        <h1 class="text-xl font-black tracking-tight text-white">Vinculación por Código QR</h1>
+      </div>
+      <p class="text-xs text-slate-400 mt-1">
+        Escanea el código con la aplicación móvil de WhatsApp para iniciar la sesión de ChronoBot.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      (click)="regenerateQr()"
+      class="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 text-xs font-semibold transition-all cursor-pointer"
+    >
+      <mat-icon class="text-base text-cyan-400">refresh</mat-icon>
+      <span>Regenerar Código QR</span>
+    </button>
+  </div>
+
+  <!-- QR Container Card -->
+  <div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-8 backdrop-blur-xl flex flex-col items-center justify-center text-center max-w-xl mx-auto shadow-2xl">
+    @if (qrData()?.dataUrl) {
+      <div class="p-4 bg-white rounded-3xl shadow-[0_0_50px_rgba(6,182,212,0.3)] mb-6 transition-all duration-300">
+        <img [src]="qrData()?.dataUrl" alt="Código QR de WhatsApp" class="w-64 h-64 object-contain" />
+      </div>
+
+      <div class="flex items-center gap-2 text-emerald-400 text-xs font-semibold mb-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Código QR generado y listo para escanear</span>
+      </div>
+
+      <p class="text-xs text-slate-400 max-w-md leading-relaxed">
+        Abre WhatsApp en tu teléfono &gt; Dispositivos vinculados &gt; Vincular un dispositivo.
+      </p>
+    } @else {
+      <div class="w-64 h-64 rounded-3xl bg-black/40 border border-dashed border-white/10 flex flex-col items-center justify-center p-6 mb-6">
+        <mat-icon class="text-4xl text-slate-600 mb-2">qr_code_scanner</mat-icon>
+        <p class="text-xs text-slate-500 font-medium text-center">
+          Esperando que el proceso del bot genere un nuevo código QR...
+        </p>
+      </div>
+
+      <p class="text-xs text-slate-400 max-w-md">
+        Si la sesión ya está guardada previamente en <span class="text-cyan-400 font-mono">.wwebjs_auth</span>, el bot iniciará sesión de forma automática sin solicitar QR.
+      </p>
+    }
+  </div>
+</div>

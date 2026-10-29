@@ -1,0 +1,31 @@
+<div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-2xl flex items-center justify-center p-6">
+  <div class="bg-[#0e1422]/90 border border-white/10 rounded-3xl max-w-2xl w-full p-6 shadow-[0_0_100px_rgba(0,0,0,0.9)] backdrop-blur-3xl flex flex-col max-h-[85vh]">
+    <div class="flex items-center justify-between pb-4 border-b border-white/5">
+      <div class="flex items-center gap-2">
+        <mat-icon class="text-cyan-400 text-lg">code</mat-icon>
+        <h3 class="text-base font-bold text-white">data/employees.json</h3>
+      </div>
+      <button type="button" (click)="closeModal.emit()" class="w-8 h-8 rounded-xl bg-white/5 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer">
+        <mat-icon class="text-base">close</mat-icon>
+      </button>
+    </div>
+
+    <p class="text-xs text-slate-400 mt-3">
+      Contenido JSON formateado y sincronizado con el backend del bot:
+    </p>
+
+    <div class="mt-4 flex-1 overflow-auto bg-black/60 rounded-2xl p-4 border border-white/5">
+      <pre class="font-mono text-[11px] text-cyan-300/90 whitespace-pre-wrap leading-relaxed">{{ jsonContent() }}</pre>
+    </div>
+
+    <div class="flex items-center justify-end pt-4 mt-4 border-t border-white/5">
+      <button
+        type="button"
+        (click)="closeModal.emit()"
+        class="px-5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold cursor-pointer"
+      >
+        Cerrar
+      </button>
+    </div>
+  </div>
+</div>

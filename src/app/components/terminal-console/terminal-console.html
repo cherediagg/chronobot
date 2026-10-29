@@ -1,0 +1,67 @@
+<div class="bg-[#0e1422]/80 border border-white/10 rounded-3xl p-4 backdrop-blur-xl flex flex-col font-mono text-xs overflow-hidden" [ngClass]="heightClass()">
+  <!-- Console Controls Header -->
+  <div class="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
+      <span class="w-2.5 h-2.5 rounded-full bg-amber-500/80"></span>
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
+      <span class="text-slate-400 font-sans text-xs font-semibold ml-2">Salida Terminal Stdout</span>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button
+        type="button"
+        (click)="autoScrollChange.emit(!autoScroll())"
+        class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-sans font-medium transition-all cursor-pointer border"
+        [ngClass]="autoScroll() ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30' : 'bg-white/5 text-slate-400 border-white/5 hover:text-white'"
+      >
+        <mat-icon class="text-sm">vertical_align_bottom</mat-icon>
+        <span>Auto-scroll</span>
+      </button>
+
+      <button
+        type="button"
+        (click)="clearLogs.emit()"
+        class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-sans font-medium bg-white/5 hover:bg-rose-500/10 text-slate-400 hover:text-rose-300 border border-white/5 transition-all cursor-pointer"
+      >
+        <mat-icon class="text-sm">delete_sweep</mat-icon>
+        <span>Limpiar</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Terminal Body -->
+  <div #terminalContainer class="flex-1 overflow-y-auto space-y-1 pr-2 font-mono text-[11px] leading-relaxed">
+    @for (log of logs(); track log.id) {
+      <div class="flex items-start gap-2 hover:bg-white/[0.02] p-0.5 rounded transition-colors">
+        <span class="text-slate-500 select-none text-[10px]">{{ log.time }}</span>
+        <span
+          class="font-bold uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded"
+          [ngClass]="{
+            'bg-blue-500/20 text-blue-300 border border-blue-500/30': log.level === 'INFO',
+            'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30': log.level === 'DEBUG',
+            'bg-amber-500/20 text-amber-300 border border-amber-500/30': log.level === 'WARN',
+            'bg-rose-500/20 text-rose-300 border border-rose-500/30': log.level === 'ERROR'
+          }"
+        >
+          {{ log.level }}
+        </span>
+        <span
+          class="flex-1 whitespace-pre-wrap break-all"
+          [ngClass]="{
+            'text-slate-300': log.level === 'INFO',
+            'text-emerald-300': log.level === 'DEBUG',
+            'text-amber-300': log.level === 'WARN',
+            'text-rose-300 font-semibold': log.level === 'ERROR'
+          }"
+        >
+          {{ log.text }}
+        </span>
+      </div>
+    } @empty {
+      <div class="text-slate-500 italic py-8 text-center font-sans">
+        No hay registros disponibles en la consola.
+      </div>
+    }
+  </div>
+</div>

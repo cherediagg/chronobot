@@ -1,0 +1,33 @@
+<div class="space-y-6">
+  <!-- Header bar -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+    <div>
+      <div class="flex items-center gap-2">
+        <mat-icon class="text-cyan-400 text-xl">terminal</mat-icon>
+        <h1 class="text-xl font-black tracking-tight text-white">Consola de Eventos en Vivo</h1>
+      </div>
+      <p class="text-xs text-slate-400 mt-1">
+        Consola de salida estándar del proceso Node.js del bot de WhatsApp (<span class="text-cyan-400 font-mono">chronobot.js</span>).
+      </p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-[#0e1422]/80 border border-white/10 text-xs">
+        <span class="w-2 h-2 rounded-full" [class]="botStatus() === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'"></span>
+        <span class="text-slate-300 font-medium">Estado Bot:</span>
+        <span class="font-bold uppercase tracking-wider text-[10px]" [class]="botStatus() === 'active' ? 'text-emerald-400' : 'text-slate-400'">
+          {{ botStatus() }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reusable Atomic Terminal Console -->
+  <app-terminal-console
+    [logs]="logs()"
+    [autoScroll]="autoScrollLogs()"
+    [heightClass]="'h-[650px]'"
+    (autoScrollChange)="toggleAutoScroll($event)"
+    (clearLogs)="clearLogs()"
+  />
+</div>
