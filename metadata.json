@@ -1,0 +1,6 @@
+{
+  "name": "Fernet WhatsApp Bot - Panel de Control",
+  "description": "Panel de control integral para Fernet WhatsApp Bot con monitoreo en tiempo real, gestión de logs, visualización de imágenes guardadas, contactos autorizados y configuración.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

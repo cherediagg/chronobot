@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom terminal and glass scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Material icons alignment */
+.mat-icon {
+  font-family: 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =========================================================================
+   Volumetric Aurora Drift & Fluid Light Mesh Animations
+   ========================================================================= */
+
+@keyframes aurora-drift-primary {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  25% {
+    transform: translate3d(120px, -70px, 0) scale(1.18) rotate(12deg);
+  }
+  50% {
+    transform: translate3d(60px, 90px, 0) scale(0.92) rotate(-8deg);
+  }
+  75% {
+    transform: translate3d(-80px, 40px, 0) scale(1.1) rotate(16deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes aurora-drift-secondary {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  30% {
+    transform: translate3d(-110px, 80px, 0) scale(1.15) rotate(-18deg);
+  }
+  60% {
+    transform: translate3d(90px, -60px, 0) scale(0.9) rotate(10deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes aurora-drift-tertiary {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  35% {
+    transform: translate3d(80px, 100px, 0) scale(1.22);
+  }
+  70% {
+    transform: translate3d(-70px, -50px, 0) scale(0.95);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes aurora-pulse-glow {
+  0%, 100% {
+    opacity: 0.28;
+    filter: blur(140px);
+  }
+  50% {
+    opacity: 0.45;
+    filter: blur(170px);
+  }
+}
+
+.animate-aurora-drift-1 {
+  animation: aurora-drift-primary 24s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite,
+             aurora-pulse-glow 14s ease-in-out infinite;
+  will-change: transform, opacity, filter;
+}
+
+.animate-aurora-drift-2 {
+  animation: aurora-drift-secondary 30s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite,
+             aurora-pulse-glow 18s ease-in-out infinite 3s;
+  will-change: transform, opacity, filter;
+}
+
+.animate-aurora-drift-3 {
+  animation: aurora-drift-tertiary 36s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite,
+             aurora-pulse-glow 22s ease-in-out infinite 7s;
+  will-change: transform, opacity, filter;
+}
+
+/* Accessibility: respect user prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora-drift-1,
+  .animate-aurora-drift-2,
+  .animate-aurora-drift-3 {
+    animation: none !important;
+    transform: none !important;
+  }
+}
