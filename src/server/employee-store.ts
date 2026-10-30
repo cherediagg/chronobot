@@ -1,19 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { EMPLOYEES_FILE_PATH, EmployeeFileRepository } from './employee-file.repository';
+import { ChronoEmployee } from './employee.model';
+import { EmployeeRepository } from './employee.repository';
 
-export const EMPLOYEES_FILE_PATH = path.resolve(process.cwd(), 'data', 'employees.json');
-
-export interface ChronoEmployee {
-  id: string;
-  nombre: string;
-  name?: string;
-  telefono: string;
-  phone?: string;
-  activo: boolean;
-  authorized?: boolean;
-  notes?: string;
-  updatedAt?: string;
-}
+export { EMPLOYEES_FILE_PATH } from './employee-file.repository';
+export type { ChronoEmployee } from './employee.model';
 
 const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
   {
@@ -73,34 +63,55 @@ const DEFAULT_EMPLOYEES: ChronoEmployee[] = [
   }
 ];
 
-class EmployeeStore {
+function normalizeEmployee(value: unknown, index: number): ChronoEmployee {
+  const record = isRecord(value) ? value : {};
+  const nombre = typeof record['nombre'] === 'string'
+    ? record['nombre']
+    : typeof record['name'] === 'string'
+      ? record['name']
+      : `Empleado ${index + 1}`;
+  const telefono = typeof record['telefono'] === 'string'
+    ? record['telefono']
+    : typeof record['phone'] === 'string'
+      ? record['phone']
+      : '';
+  const activo = record['activo'] !== undefined
+    ? Boolean(record['activo'])
+    : record['authorized'] !== undefined
+      ? Boolean(record['authorized'])
+      : true;
+  const notes = typeof record['notes'] === 'string' ? record['notes'] : '';
+  const updatedAt = typeof record['updatedAt'] === 'string' ? record['updatedAt'] : new Date().toISOString();
+
+  return {
+    id: typeof record['id'] === 'string' ? record['id'] : `emp-${index + 1}`,
+    nombre,
+    name: nombre,
+    telefono,
+    phone: telefono,
+    activo,
+    authorized: activo,
+    notes,
+    updatedAt
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export class EmployeeStore {
+  constructor(private readonly repository: EmployeeRepository) {}
+
   /**
    * Reads employees from data/employees.json.
    * If the file does not exist, it seeds it with defaults.
    */
   public getEmployees(): ChronoEmployee[] {
     try {
-      if (fs.existsSync(EMPLOYEES_FILE_PATH)) {
-        const raw = fs.readFileSync(EMPLOYEES_FILE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((e: Partial<ChronoEmployee>, idx: number) => {
-            const nombre = e.nombre || e.name || `Empleado ${idx + 1}`;
-            const telefono = e.telefono || e.phone || '';
-            const activo = e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true);
-            return {
-              id: e.id || `emp-${idx + 1}`,
-              nombre,
-              name: nombre,
-              telefono,
-              phone: telefono,
-              activo,
-              authorized: activo,
-              notes: e.notes || '',
-              updatedAt: e.updatedAt || new Date().toISOString()
-            };
-          });
-        }
+      const parsed = this.repository.read();
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((employee, index) => normalizeEmployee(employee, index));
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -108,65 +119,8 @@ class EmployeeStore {
     }
 
     // Initialize with default employees if file missing or empty
-    this.writeEmployeesToFile(DEFAULT_EMPLOYEES);
-    return DEFAULT_EMPLOYEES;
-  }
-
-  /**
-   * Persists an array of employees to data/employees.json.
-   */
-  private writeEmployeesToFile(employees: ChronoEmployee[]): boolean {
-    try {
-      const dir = path.dirname(EMPLOYEES_FILE_PATH);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(EMPLOYEES_FILE_PATH, JSON.stringify(employees, null, 2), 'utf-8');
-      return true;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[EmployeeStore API] Error al escribir en ${EMPLOYEES_FILE_PATH}: ${msg}`);
-      return false;
-    }
-  }
-
-  /**
-   * Retrieves file metadata for inspection in the dashboard.
-   */
-  public getEmployeeFileDetails() {
-    const exists = fs.existsSync(EMPLOYEES_FILE_PATH);
-    let size = 0;
-    let modifiedAt = new Date().toISOString();
-    let rawContent = '[]';
-    let employeesCount = 0;
-    let allowedCount = 0;
-
-    if (exists) {
-      try {
-        const stat = fs.statSync(EMPLOYEES_FILE_PATH);
-        size = stat.size;
-        modifiedAt = stat.mtime.toISOString();
-        rawContent = fs.readFileSync(EMPLOYEES_FILE_PATH, 'utf-8');
-        const parsed = JSON.parse(rawContent);
-        if (Array.isArray(parsed)) {
-          employeesCount = parsed.length;
-          allowedCount = parsed.filter(e => e.activo !== false && e.authorized !== false).length;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    return {
-      relativePath: 'data/employees.json',
-      absolutePath: EMPLOYEES_FILE_PATH,
-      exists,
-      sizeBytes: size,
-      modifiedAt,
-      employeesCount,
-      allowedCount,
-      rawJson: rawContent
-    };
+    this.repository.write(DEFAULT_EMPLOYEES);
+    return DEFAULT_EMPLOYEES.map(employee => ({ ...employee }));
   }
 
   /**
@@ -192,7 +146,7 @@ class EmployeeStore {
     };
 
     current.push(newEmp);
-    this.writeEmployeesToFile(current);
+    this.repository.write(current);
     return newEmp;
   }
 
@@ -224,7 +178,7 @@ class EmployeeStore {
     }
     emp.updatedAt = new Date().toISOString();
 
-    this.writeEmployeesToFile(current);
+    this.repository.write(current);
     return emp;
   }
 
@@ -240,7 +194,7 @@ class EmployeeStore {
     emp.authorized = emp.activo;
     emp.updatedAt = new Date().toISOString();
 
-    this.writeEmployeesToFile(current);
+    this.repository.write(current);
     return emp;
   }
 
@@ -253,39 +207,10 @@ class EmployeeStore {
     if (idx === -1) return null;
 
     const [removed] = current.splice(idx, 1);
-    this.writeEmployeesToFile(current);
+    this.repository.write(current);
     return removed;
   }
 
-  /**
-   * Overwrites data/employees.json with validated raw JSON.
-   */
-  public saveRawEmployeesFile(rawJson: string): { success: boolean; count?: number; error?: string } {
-    try {
-      const parsed = JSON.parse(rawJson);
-      if (!Array.isArray(parsed)) {
-        return { success: false, error: 'El contenido debe ser un array JSON' };
-      }
-
-      const formatted: ChronoEmployee[] = parsed.map((e: Partial<ChronoEmployee>, idx: number) => ({
-        id: e.id || `emp-${idx + 1}`,
-        nombre: e.nombre || e.name || `Empleado ${idx + 1}`,
-        name: e.nombre || e.name || `Empleado ${idx + 1}`,
-        telefono: e.telefono || e.phone || '',
-        phone: e.telefono || e.phone || '',
-        activo: e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true),
-        authorized: e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true),
-        notes: e.notes || '',
-        updatedAt: new Date().toISOString()
-      }));
-
-      this.writeEmployeesToFile(formatted);
-      return { success: true, count: formatted.length };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, error: msg };
-    }
-  }
 }
 
-export const employeeStore = new EmployeeStore();
+export const employeeStore = new EmployeeStore(new EmployeeFileRepository());

@@ -571,6 +571,7 @@ if (require.main === module) {
 
 module.exports = {
   loadEmployees,
+  buildAllowedNumbers,
   refreshAllowedNumbers,
   getEmployees: () => employees,
   getAllowedNumbers: () => allowedNumbers,

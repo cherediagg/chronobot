@@ -1,64 +1,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createConnection } from 'node:net';
 import { StringDecoder } from 'node:string_decoder';
-import { execFileSync, spawn, ChildProcess } from 'node:child_process';
+import { spawn, ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { SavedImageRepository } from './server/saved-image.repository';
+import type { ChronoSavedImage } from './server/saved-image.repository';
+import { EMPLOYEES_FILE_PATH } from './server/employee-file.repository';
+import type { ChronoEmployee } from './server/employee.model';
+import { BotActivityLog } from './server/bot-activity-log';
+import { WhatsAppSessionGuard } from './server/whatsapp-session-guard';
 
 const require = createRequire(import.meta.url);
 const chronobotPath = path.resolve(process.cwd(), 'chronobot.js');
 const chronobotModule = require(chronobotPath);
-const whatsappRequire = createRequire(require.resolve('whatsapp-web.js'));
-const puppeteer = whatsappRequire('puppeteer');
 
-export const EMPLOYEES_FILE_PATH = path.resolve(process.cwd(), 'data', 'employees.json');
+export { EMPLOYEES_FILE_PATH };
 
-export interface ChronoLogEntry {
-  id: string;
-  timestamp: string;
-  time: string;
-  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
-  message: string;
-  details?: unknown;
-  isQr?: boolean;
-  highlightPath?: string;
-  highlightSender?: string;
-}
-
-export interface ChronoEmployee {
-  id: string;
-  nombre: string;
-  name?: string;
-  telefono: string;
-  phone?: string;
-  activo: boolean;
-  authorized?: boolean;
-  notes?: string;
-  updatedAt?: string;
-}
-
-export interface ChronoBotEvent {
-  id: string;
-  type: 'image_saved' | 'message_received' | 'unauthorized' | 'client_connected' | 'system';
-  title: string;
-  subtitle: string;
-  relativeTime: string;
-  timestamp: number;
-}
-
-export interface ChronoSavedImage {
-  id: string;
-  senderName: string;
-  senderPhone: string;
-  dateFormatted: string;
-  timeFormatted: string;
-  filename: string;
-  path: string;
-  imageUrl: string;
-  size: string;
-  dimensions: string;
-  category?: string;
-}
+export type { ChronoBotEvent, ChronoLogEntry } from './server/bot-activity-log';
 
 type ChronoBotStatus = 'active' | 'stopped' | 'restarting' | 'connecting' | 'waiting_qr' | 'disconnected';
 
@@ -109,15 +67,16 @@ interface RuntimeLogEnvelope {
 }
 
 export class ChronoBotEngine {
-  public static readonly IMAGES_ROOT_DIR = path.resolve(process.cwd(), 'public', 'imagenes');
-
   private status: ChronoBotStatus = 'stopped';
   private startTime = Date.now();
-  private logs: ChronoLogEntry[] = [];
-  private events: ChronoBotEvent[] = [];
-  private employees: ChronoEmployee[] = [];
+  private readonly activity = new BotActivityLog();
   private allowedNumbers: Record<string, string> = {};
   private savedImages: ChronoSavedImage[] = [];
+  private readonly imageRepository = new SavedImageRepository();
+  private readonly sessionGuard = new WhatsAppSessionGuard(
+    chronobotPath,
+    (level, message) => this.addLogInternal(level, message)
+  );
   private botProcess: ChildProcess | null = null;
   private startPromise: Promise<boolean> | null = null;
   private sessionConflict = false;
@@ -137,58 +96,22 @@ export class ChronoBotEngine {
     this.initChronoLogs();
   }
 
-  private normalizePhoneNumber(value: string | number): string {
-    return String(value || '').replace(/\D/g, '');
-  }
-
-  private buildAllowedNumbers(empleados: ChronoEmployee[] = []): Record<string, string> {
-    return (empleados || []).reduce((acc, empleado) => {
-      const telefono = this.normalizePhoneNumber(empleado?.telefono || empleado?.phone || '');
-      const nombre = empleado?.nombre || empleado?.name || telefono || 'Sin nombre';
-      const isActivo = empleado?.activo !== undefined ? empleado.activo : Boolean(empleado?.authorized);
-
-      if (isActivo && telefono) {
-        acc[telefono] = nombre;
-      }
-
-      return acc;
-    }, {} as Record<string, string>);
-  }
-
   /**
    * Reads employees from data/employees.json using chronobotModule strictly for WhatsApp authorization.
    */
   public loadEmployeesFromFile(): ChronoEmployee[] {
     try {
       const loaded = chronobotModule.loadEmployees();
-      if (Array.isArray(loaded) && loaded.length > 0) {
-        this.employees = loaded.map((e: Partial<ChronoEmployee>, idx: number) => {
-          const nombre = e.nombre || e.name || `Empleado ${idx + 1}`;
-          const telefono = e.telefono || e.phone || '';
-          const activo = e.activo !== undefined ? Boolean(e.activo) : (e.authorized !== undefined ? Boolean(e.authorized) : true);
-          return {
-            id: e.id || `emp-${idx + 1}`,
-            nombre,
-            name: nombre,
-            telefono,
-            phone: telefono,
-            activo,
-            authorized: activo,
-            notes: e.notes || '',
-            updatedAt: e.updatedAt || new Date().toISOString()
-          };
-        });
-        this.allowedNumbers = this.buildAllowedNumbers(this.employees);
-        return this.employees;
-      }
+      const employees: ChronoEmployee[] = Array.isArray(loaded) ? loaded : [];
+      this.allowedNumbers = chronobotModule.buildAllowedNumbers(employees);
+      return employees;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[ChronoBot Engine] Error al leer con chronobot.js: ${msg}`);
     }
 
-    this.employees = [];
     this.allowedNumbers = {};
-    return this.employees;
+    return [];
   }
 
   /**
@@ -197,7 +120,6 @@ export class ChronoBotEngine {
   public reloadAuthorizedContacts(reason?: string): Record<string, string> {
     try {
       this.allowedNumbers = chronobotModule.refreshAllowedNumbers();
-      this.loadEmployeesFromFile();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.addLogInternal('ERROR', `No se pudieron recargar los contactos: ${msg}`);
@@ -211,58 +133,7 @@ export class ChronoBotEngine {
   }
 
   public loadSavedImagesFromDisk(): ChronoSavedImage[] {
-    const baseDir = ChronoBotEngine.IMAGES_ROOT_DIR;
-    const results: ChronoSavedImage[] = [];
-
-    try {
-      if (!fs.existsSync(baseDir)) {
-        fs.mkdirSync(baseDir, { recursive: true });
-        this.savedImages = [];
-        return [];
-      }
-
-      const contactDirs = fs.readdirSync(baseDir, { withFileTypes: true });
-      for (const cDir of contactDirs) {
-        if (!cDir.isDirectory()) continue;
-        const contactPath = path.join(baseDir, cDir.name);
-        const monthDirs = fs.readdirSync(contactPath, { withFileTypes: true });
-        for (const mDir of monthDirs) {
-          if (!mDir.isDirectory()) continue;
-          const monthPath = path.join(contactPath, mDir.name);
-          const files = fs.readdirSync(monthPath, { withFileTypes: true });
-          for (const file of files) {
-            if (!file.isFile()) continue;
-            const fullPath = path.join(monthPath, file.name);
-            const stat = fs.statSync(fullPath);
-            const sizeKb = (stat.size / 1024).toFixed(1);
-            const sizeMb = (stat.size / (1024 * 1024)).toFixed(2);
-            const sizeStr = stat.size >= 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`;
-            const contactName = cDir.name.replace(/_/g, ' ');
-            const phone = this.findPhoneByContactName(contactName) || '';
-            const relativeWebPath = `/imagenes/${cDir.name}/${mDir.name}/${file.name}`;
-
-            results.push({
-              id: 'img-' + stat.mtimeMs + '-' + file.name,
-              senderName: contactName,
-              senderPhone: phone,
-              dateFormatted: stat.mtime.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }),
-              timeFormatted: stat.mtime.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-              filename: file.name,
-              path: relativeWebPath,
-              imageUrl: relativeWebPath,
-              size: sizeStr,
-              dimensions: 'Nativo',
-              category: mDir.name
-            });
-          }
-        }
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[ChronoBot Engine] Error escaneando ${baseDir}: ${msg}`);
-    }
-
-    results.sort((a, b) => b.id.localeCompare(a.id));
+    const results = this.imageRepository.scan(name => this.findPhoneByContactName(name));
     this.savedImages = results;
     return results;
   }
@@ -283,35 +154,13 @@ export class ChronoBotEngine {
   }
 
   private initChronoLogs() {
-    this.logs = [];
-    this.events = [];
     this.addLogInternal('INFO', 'Estado del bot: APAGADO / Proceso de Node inactivo.');
     this.addLogInternal('INFO', 'Inicie el bot desde el botón principal para arrancar el proceso de Node.');
     this.addLogInternal('INFO', `Contactos autorizados cargados desde ${path.basename(EMPLOYEES_FILE_PATH)}: ${Object.keys(this.allowedNumbers).length}`);
   }
 
   private addLogInternal(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', message: string, timeStr?: string, options?: { isQr?: boolean; highlightPath?: string; highlightSender?: string; details?: unknown }) {
-    const now = new Date();
-    const time = timeStr || now.toLocaleTimeString('es-ES', { hour12: false });
-    const timestamp = now.toLocaleString('es-ES');
-
-    const entry: ChronoLogEntry = {
-      id: 'log-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
-      timestamp,
-      time,
-      level,
-      message,
-      isQr: options?.isQr,
-      highlightPath: options?.highlightPath,
-      highlightSender: options?.highlightSender,
-      details: options?.details
-    };
-
-    this.logs.push(entry);
-
-    if (this.logs.length > 500) {
-      this.logs.shift();
-    }
+    this.activity.addLog(level, message, timeStr, options);
   }
 
   public log(level: 'log' | 'warn' | 'error' | 'debug', message: string, details?: unknown) {
@@ -385,7 +234,7 @@ export class ChronoBotEngine {
       this.connectedPhone = event.connectedPhone || '';
       this.currentRawQr = '';
       this.currentQrDataUrl = '';
-      this.events.unshift({
+      this.activity.addEvent({
         id: 'ev-' + Date.now(),
         type: 'client_connected',
         title: 'WhatsApp conectado',
@@ -397,7 +246,7 @@ export class ChronoBotEngine {
     }
 
     if (event.type === 'message_received' && event.contactName) {
-      this.events.unshift({
+      this.activity.addEvent({
         id: 'ev-' + Date.now(),
         type: 'message_received',
         title: 'Mensaje recibido',
@@ -409,7 +258,7 @@ export class ChronoBotEngine {
     }
 
     if (event.type === 'unauthorized') {
-      this.events.unshift({
+      this.activity.addEvent({
         id: 'ev-' + Date.now(),
         type: 'unauthorized',
         title: 'Número no autorizado',
@@ -426,7 +275,7 @@ export class ChronoBotEngine {
         highlightPath: event.filePath,
         highlightSender: event.contactName
       });
-      this.events.unshift({
+      this.activity.addEvent({
         id: 'ev-' + Date.now(),
         type: 'image_saved',
         title: 'Imagen guardada',
@@ -451,172 +300,6 @@ export class ChronoBotEngine {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.addLogInternal('ERROR', `Error procesando evento de WhatsApp Web: ${message}`);
-    }
-  }
-
-  private isProcessAlive(pid: number): boolean {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch (error) {
-      return !(error instanceof Error && 'code' in error && error.code === 'ESRCH');
-    }
-  }
-
-  private async isBrowserPortOpen(port: number): Promise<boolean> {
-    return new Promise(resolve => {
-      const socket = createConnection({ host: '127.0.0.1', port });
-      const finish = (isOpen: boolean) => {
-        socket.destroy();
-        resolve(isOpen);
-      };
-      socket.setTimeout(1000);
-      socket.once('connect', () => finish(true));
-      socket.once('timeout', () => finish(false));
-      socket.once('error', () => finish(false));
-    });
-  }
-
-  private getExistingBrowserPort(): number | null {
-    const activePortPath = path.join(path.resolve(process.cwd(), '.wwebjs_auth'), 'session', 'DevToolsActivePort');
-    if (!fs.existsSync(activePortPath)) return null;
-
-    try {
-      const port = Number(fs.readFileSync(activePortPath, 'utf8').split(/\r?\n/, 1)[0]);
-      return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
-      throw error;
-    }
-  }
-
-  private isChronoBotProcess(pid: number): boolean {
-    try {
-      const commandLine = process.platform === 'win32'
-        ? execFileSync('powershell.exe', [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `$process = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if ($process) { $process.CommandLine }`
-        ], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim()
-        : fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
-      return commandLine.toLowerCase().includes(chronobotPath.toLowerCase())
-        && /(?:^|\s)node(?:\.exe)?(?:\s|$)/i.test(commandLine);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.addLogInternal('WARN', `No se pudo verificar que PID ${pid} pertenece a chronobot.js: ${message}`);
-      return false;
-    }
-  }
-
-  private async waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (!this.isProcessAlive(pid)) return true;
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    return !this.isProcessAlive(pid);
-  }
-
-  private async closeExistingBrowser(port: number): Promise<void> {
-    if (!await this.isBrowserPortOpen(port)) return;
-
-    const browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}` });
-    await browser.close();
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline && await this.isBrowserPortOpen(port)) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    if (await this.isBrowserPortOpen(port)) {
-      throw new Error(`Chrome no liberó el perfil tras cerrar la sesión (puerto ${port}).`);
-    }
-  }
-
-  private async findExistingSession(): Promise<{ label: string; pid?: number; token?: string; port?: number } | null> {
-    const authDirectory = path.resolve(process.cwd(), '.wwebjs_auth');
-    const sessionLockPath = path.join(authDirectory, 'chronobot.lock');
-    const browserPort = this.getExistingBrowserPort();
-    if (fs.existsSync(sessionLockPath)) {
-      try {
-        const lock = JSON.parse(fs.readFileSync(sessionLockPath, 'utf8')) as { pid?: number; token?: string };
-        const pid = Number(lock.pid);
-        if (Number.isInteger(pid) && pid > 0 && this.isProcessAlive(pid) && this.isChronoBotProcess(pid)) {
-          return {
-            label: `cliente de ChronoBot (PID ${pid})`,
-            pid,
-            token: typeof lock.token === 'string' ? lock.token : undefined,
-            port: browserPort || undefined
-          };
-        }
-      } catch {
-        this.addLogInternal('WARN', 'No se pudo leer el bloqueo de sesión de ChronoBot; se verificará el navegador activo.');
-      }
-    }
-
-    return browserPort && await this.isBrowserPortOpen(browserPort)
-      ? { label: `navegador de WhatsApp Web (puerto ${browserPort})`, port: browserPort }
-      : null;
-  }
-
-  private async stopExistingSession(existing: { label: string; pid?: number; token?: string; port?: number }): Promise<void> {
-    this.addLogInternal('WARN', `Se cerrará la sesión existente: ${existing.label}.`);
-    const authDirectory = path.resolve(process.cwd(), '.wwebjs_auth');
-    const commandPath = path.join(authDirectory, 'chronobot-command.json');
-
-    if (existing.pid && existing.token) {
-      try {
-        fs.writeFileSync(commandPath, JSON.stringify({ action: 'stop', token: existing.token }));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.addLogInternal('WARN', `No se pudo enviar el cierre controlado a ChronoBot: ${message}`);
-      }
-
-      if (await this.waitForProcessExit(existing.pid, 5000)) {
-        if (existing.port && await this.isBrowserPortOpen(existing.port)) {
-          throw new Error(`ChronoBot finalizó, pero Chrome sigue activo en el puerto ${existing.port}.`);
-        }
-        this.addLogInternal('INFO', `La sesión existente (PID ${existing.pid}) se cerró correctamente.`);
-        return;
-      }
-    }
-
-    if (existing.port) {
-      await this.closeExistingBrowser(existing.port);
-      this.addLogInternal('INFO', `Chrome liberó el perfil de WhatsApp Web (puerto ${existing.port}).`);
-    }
-
-    if (existing.pid && this.isProcessAlive(existing.pid)) {
-      if (!this.isChronoBotProcess(existing.pid)) {
-        throw new Error(`El PID ${existing.pid} no corresponde a chronobot.js; no se terminará un proceso ajeno.`);
-      }
-
-      process.kill(existing.pid, 'SIGTERM');
-      if (!await this.waitForProcessExit(existing.pid, 5000)) {
-        if (process.platform === 'win32') {
-          execFileSync('taskkill.exe', ['/PID', String(existing.pid), '/T', '/F'], {
-            encoding: 'utf8',
-            timeout: 5000,
-            windowsHide: true,
-            stdio: 'ignore'
-          });
-        } else {
-          process.kill(existing.pid, 'SIGKILL');
-        }
-        if (!await this.waitForProcessExit(existing.pid, 2000)) {
-          throw new Error(`No se pudo cerrar el proceso ChronoBot (PID ${existing.pid}).`);
-        }
-      }
-    }
-
-    if (existing.port && await this.isBrowserPortOpen(existing.port)) {
-      throw new Error(`La sesión de WhatsApp Web sigue activa en el puerto ${existing.port}.`);
-    }
-
-    try {
-      const pendingCommand = JSON.parse(fs.readFileSync(commandPath, 'utf8')) as { token?: string };
-      if (pendingCommand.token === existing.token) fs.unlinkSync(commandPath);
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
     }
   }
 
@@ -654,7 +337,7 @@ export class ChronoBotEngine {
     if (
       !Number.isInteger(pid) ||
       pid <= 0 ||
-      !this.isProcessAlive(pid) ||
+      !this.sessionGuard.isProcessAlive(pid) ||
       runtime.pid !== pid ||
       !lock.token ||
       runtime.token !== lock.token ||
@@ -734,11 +417,11 @@ export class ChronoBotEngine {
     }
 
     try {
-      const existingSession = await this.findExistingSession();
+      const existingSession = await this.sessionGuard.findExistingSession();
       if (existingSession) {
         this.sessionConflict = false;
-        await this.stopExistingSession(existingSession);
-        const remainingSession = await this.findExistingSession();
+        await this.sessionGuard.stopExistingSession(existingSession);
+        const remainingSession = await this.sessionGuard.findExistingSession();
         if (remainingSession) {
           throw new Error(`No se pudo liberar la sesión existente: ${remainingSession.label}.`);
         }
@@ -837,10 +520,10 @@ export class ChronoBotEngine {
         }));
 
         const deadline = Date.now() + 8000;
-        while (Date.now() < deadline && this.isProcessAlive(external.pid)) {
+        while (Date.now() < deadline && this.sessionGuard.isProcessAlive(external.pid)) {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
-        if (this.isProcessAlive(external.pid)) {
+        if (this.sessionGuard.isProcessAlive(external.pid)) {
           try {
             const pendingCommand = JSON.parse(fs.readFileSync(commandPath, 'utf8')) as { token?: string };
             if (pendingCommand.token === external.token) fs.unlinkSync(commandPath);
@@ -892,114 +575,6 @@ export class ChronoBotEngine {
     this.connectedPhone = '';
   }
 
-  private async handleMessage(payload: { from: string; body?: string; hasMedia?: boolean; type?: string; author?: string }) {
-    if (this.status !== 'active') {
-      this.log('warn', 'Bot apagado. No se pueden recibir ni procesar mensajes.');
-      return { handled: false, reason: 'bot_stopped' };
-    }
-
-    const senderRaw = payload.author || payload.from || '';
-    const cleanNumber = chronobotModule.normalizeWhatsAppPhone
-      ? chronobotModule.normalizeWhatsAppPhone(senderRaw)
-      : this.normalizePhoneNumber(senderRaw.replace(/@(c\.us|s\.whatsapp\.net)$/i, ''));
-
-    this.log('log', 'Mensaje recibido:', {
-      from: payload.from,
-      type: payload.type || (payload.hasMedia ? 'image' : 'chat'),
-      hasMedia: Boolean(payload.hasMedia),
-      body: payload.body || ''
-    });
-
-    if (payload.from?.endsWith('@g.us')) {
-      this.log('log', 'Mensaje de grupo ignorado.');
-      return { handled: false, reason: 'group_ignored' };
-    }
-
-    if (!cleanNumber) {
-      this.log('warn', 'No se pudo resolver el teléfono. Mensaje no procesado por seguridad.');
-      return { handled: false, reason: 'unresolved_phone' };
-    }
-
-    const contactName = this.allowedNumbers[cleanNumber];
-
-    if (!contactName) {
-      this.log('warn', 'Número no autorizado:', cleanNumber);
-      this.events.unshift({
-        id: 'ev-' + Date.now(),
-        type: 'unauthorized',
-        title: 'Número no autorizado',
-        subtitle: '+' + cleanNumber,
-        relativeTime: 'Ahora mismo',
-        timestamp: Date.now()
-      });
-      return { handled: false, reason: 'unauthorized' };
-    }
-
-    this.log('log', 'Contacto autorizado:', contactName);
-
-    if (!payload.hasMedia) {
-      this.log('log', 'Mensaje sin multimedia; no hay acción configurada.');
-      this.events.unshift({
-        id: 'ev-' + Date.now(),
-        type: 'message_received',
-        title: 'Mensaje recibido',
-        subtitle: contactName,
-        relativeTime: 'Ahora mismo',
-        timestamp: Date.now()
-      });
-
-      this.addLogInternal('INFO', `Respuesta enviada a +${cleanNumber}: "¡Hola ${contactName}! Mensaje recibido."`);
-      this.log('log', 'Confirmación enviada.');
-      return { handled: true, contactName, hasMedia: false };
-    }
-
-    this.addLogInternal('INFO', 'Descarga de imagen 1/1');
-    const date = new Date();
-    const month = date.toLocaleString('es-ES', { month: 'long' }).toLowerCase();
-    const dateFormatted = date.toLocaleDateString('es-ES').replace(/\//g, '-');
-    const timeFormatted = date.toLocaleTimeString('es-ES', { hour12: false }).replace(/:/g, '-');
-    const uniqueId = Math.random().toString(36).substring(2, 8);
-    const fileName = `${dateFormatted}_${timeFormatted}_${uniqueId}.jpg`;
-    const safeContact = contactName.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'contacto';
-    const relativePath = `/imagenes/${safeContact}/${month}/${fileName}`;
-    const fullDirPath = path.join(ChronoBotEngine.IMAGES_ROOT_DIR, safeContact, month);
-
-    try {
-      if (!fs.existsSync(fullDirPath)) {
-        fs.mkdirSync(fullDirPath, { recursive: true });
-      }
-      const fullFilePath = path.join(fullDirPath, fileName);
-      const rawData = (payload as { base64?: string; data?: string }).base64 || (payload as { base64?: string; data?: string }).data;
-      if (rawData) {
-        fs.writeFileSync(fullFilePath, Buffer.from(rawData, 'base64'));
-      } else {
-        const sampleJpg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
-        fs.writeFileSync(fullFilePath, sampleJpg);
-      }
-      this.loadSavedImagesFromDisk();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[ChronoBot Engine] Error guardando archivo en disco: ${msg}`);
-    }
-
-    this.log('log', 'Imagen guardada:', relativePath);
-
-    this.events.unshift({
-      id: 'ev-' + Date.now(),
-      type: 'image_saved',
-      title: 'Imagen guardada',
-      subtitle: contactName,
-      relativeTime: 'Ahora mismo',
-      timestamp: Date.now()
-    });
-
-    const replyText = `Gracias ${contactName}, tu foto ${fileName} se ha guardado correctamente.`;
-    this.addLogInternal('INFO', `Respuesta enviada a +${cleanNumber}: "${replyText}"`);
-    this.log('log', 'Confirmación enviada.');
-
-    return { handled: true, contactName, hasMedia: true, filePath: relativePath, fileName };
-  }
-
   public async regenerateQr() {
     await this.restartBotProcess();
     return this.getQrData();
@@ -1036,7 +611,7 @@ export class ChronoBotEngine {
   }
 
   public clearLogs() {
-    this.logs = [];
+    this.activity.clearLogs();
     this.addLogInternal('INFO', 'Consola limpiada.');
   }
 
@@ -1061,12 +636,12 @@ export class ChronoBotEngine {
 
   public getLogs(limit = 100) {
     this.syncExternalRuntime();
-    return this.logs.slice(-limit);
+    return this.activity.getLogs(limit);
   }
 
   public getEvents(limit = 20) {
     this.syncExternalRuntime();
-    return this.events.slice(0, limit);
+    return this.activity.getEvents(limit);
   }
 
   public getSavedImages() {
@@ -1074,7 +649,8 @@ export class ChronoBotEngine {
   }
 
   public getEmployees(): ChronoEmployee[] {
-    return this.employees;
+    const employees = chronobotModule.getEmployees();
+    return Array.isArray(employees) ? employees : [];
   }
 
   public getAllowedNumbers(): Record<string, string> {
@@ -1086,10 +662,7 @@ export class ChronoBotEngine {
     if (idx !== -1) {
       const img = this.savedImages.splice(idx, 1)[0];
       try {
-        const diskPath = path.resolve(process.cwd(), 'public', img.path.replace(/^\//, ''));
-        if (fs.existsSync(diskPath)) {
-          fs.unlinkSync(diskPath);
-        }
+        this.imageRepository.delete(img);
       } catch (err: unknown) {
         console.warn(`[ChronoBot Engine] No se pudo borrar ${img.path}:`, err);
       }

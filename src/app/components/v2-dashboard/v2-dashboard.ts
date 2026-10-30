@@ -1,36 +1,23 @@
-import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { BotService } from '../../services/bot.service';
 import { SavedImage } from '../../models/bot.model';
 import { WhatsappQr } from '../whatsapp-qr/whatsapp-qr';
+import { DashboardConsole } from './dashboard-console/dashboard-console';
+import { DashboardGallery } from './dashboard-gallery/dashboard-gallery';
+import { DashboardMetrics } from './dashboard-metrics/dashboard-metrics';
 
 @Component({
   selector: 'app-v2-dashboard',
-  imports: [MatIconModule, WhatsappQr],
+  imports: [MatIconModule, WhatsappQr, DashboardConsole, DashboardGallery, DashboardMetrics],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './v2-dashboard.html',
+  templateUrl: './v2-dashboard-shell.html',
   styleUrl: './v2-dashboard.css'
 })
 export class V2Dashboard {
   readonly botService = inject(BotService);
 
-  @ViewChild('terminalContainer') private terminalContainer?: ElementRef<HTMLDivElement>;
-
   readonly selectedImageForModal = signal<SavedImage | null>(null);
-
-  constructor() {
-    effect(() => {
-      this.botService.logs();
-      const autoScroll = this.botService.autoScroll();
-      if (autoScroll && this.terminalContainer?.nativeElement) {
-        setTimeout(() => {
-          if (this.terminalContainer?.nativeElement) {
-            this.terminalContainer.nativeElement.scrollTop = this.terminalContainer.nativeElement.scrollHeight;
-          }
-        }, 50);
-      }
-    });
-  }
 
   openImageDetails(img: SavedImage) {
     this.selectedImageForModal.set(img);
@@ -48,15 +35,11 @@ export class V2Dashboard {
     }
   }
 
-  navigateToImages() {
-    this.botService.activeScreen.set('imagenes');
-  }
-
-  navigateToContacts() {
+  navigateToEmployees() {
     this.botService.activeScreen.set('contactos');
   }
 
-  navigateToLogs() {
-    this.botService.activeScreen.set('logs');
+  navigateToImages() {
+    this.botService.activeScreen.set('imagenes');
   }
 }
